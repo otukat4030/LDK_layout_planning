@@ -389,7 +389,7 @@
             <button class="btn btn-success" onclick="createLayout()">+ Layout</button>
             <button class="btn btn-danger" onclick="deleteCurrentLayout()">- Layout</button>
             <button class="btn btn-secondary" onclick="showRoomSettings()">Settings⚙️</button>
-            <button class="btn btn-primary" onclick="saveLayout()">Save JSON📄</button>
+            <button class="btn btn-primary" onclick="saveLayout()">Export JSON📄</button>
             <button class="btn btn-primary" onclick="saveCurrentLayout(true)">Save📁</button>
             <button class="btn btn-primary" onclick="shareCurrentRoom()">Share Room🔄</button>
             <!-- <button class="btn btn-primary" onclick="shareCurrentLayout()">Share Layout🔄</button> -->
@@ -470,9 +470,17 @@
     </div>
 
     <!-- Room Settings -->
-    <div id="roomModal" class="modal" onclick="hideRoomSettings()">
+        <div id="roomModal" class="modal" onclick="hideRoomSettings()">
         <div class="modal-content" onclick="event.stopPropagation()">
             <h2>Room Settings</h2>
+            <div class="form-group">
+                <label>Room Name</label>
+                <input type="text" id="roomNameInput" placeholder="Room name">
+            </div>
+            <div class="form-group">
+                <label>Layout Name</label>
+                <input type="text" id="layoutNameInput" placeholder="Layout name">
+            </div>
             <div class="form-group">
                 <label>Room Width (cm)</label>
                 <input type="number" id="roomWidth" value="575">
@@ -874,27 +882,7 @@
             if (saved) {
                 try {
                     const parsed = JSON.parse(saved);
-                    const rooms = Array.isArray(parsed.rooms) ? parsed.rooms.slice(0, MAX_ROOMS) : [];
-                    rooms.forEach(room => {
-                        room.layouts = Array.isArray(room.layouts) ? room.layouts.slice(0, MAX_LAYOUTS_PER_ROOM) : [];
-                        if (!Array.isArray(room.fixed)) {
-                            const firstLayout = room.layouts[0];
-                            room.fixed = cloneData((firstLayout && firstLayout.data && firstLayout.data.fixed) || []);
-                        }
-                        room.layouts.forEach(layout => {
-                            if (!layout.data) {
-                                layout.data = createEmptyWorkspace();
-                            }
-                            if (Array.isArray(layout.data.fixed)) {
-                                delete layout.data.fixed;
-                            }
-                        });
-                    });
-                    appState = {
-                        rooms,
-                        activeRoomId: parsed.activeRoomId || (rooms[0] ? rooms[0].id : null),
-                        activeLayoutId: parsed.activeLayoutId || null
-                    };
+                    appState = normalizeAppState(parsed);
                 } catch (err) {
                     console.warn('Failed to parse app state:', err);
                     appState = { rooms: [], activeRoomId: null, activeLayoutId: null };
@@ -912,6 +900,54 @@
             } else {
                 appState.activeLayoutId = null;
             }
+        }
+
+        function normalizeAppState(raw) {
+            const rooms = Array.isArray(raw && raw.rooms) ? raw.rooms.slice(0, MAX_ROOMS) : [];
+
+            rooms.forEach((room, roomIndex) => {
+                room.id = room.id || generateId('room');
+                room.name = (typeof room.name === 'string' && room.name.trim()) ? room.name.trim() : `Room ${roomIndex + 1}`;
+                room.layouts = Array.isArray(room.layouts) ? room.layouts.slice(0, MAX_LAYOUTS_PER_ROOM) : [];
+
+                if (!Array.isArray(room.fixed)) {
+                    const firstLayout = room.layouts[0];
+                    room.fixed = cloneData((firstLayout && firstLayout.data && firstLayout.data.fixed) || []);
+                } else {
+                    room.fixed = cloneData(room.fixed);
+                }
+
+                room.layouts = room.layouts.map((layout, layoutIndex) => {
+                    const data = layout && layout.data ? layout.data : {};
+                    return {
+                        id: (layout && layout.id) || generateId('layout'),
+                        name: (layout && typeof layout.name === 'string' && layout.name.trim()) ? layout.name.trim() : `Layout ${layoutIndex + 1}`,
+                        data: {
+                            roomWidth: Number(data.roomWidth) > 0 ? Number(data.roomWidth) : 575,
+                            roomHeight: Number(data.roomHeight) > 0 ? Number(data.roomHeight) : 585,
+                            items: cloneData(Array.isArray(data.items) ? data.items : []),
+                            userFurniture: cloneData(Array.isArray(data.userFurniture) ? data.userFurniture : [])
+                        }
+                    };
+                });
+            });
+
+            let activeRoomId = raw && raw.activeRoomId;
+            if (!rooms.find(r => r.id === activeRoomId)) {
+                activeRoomId = rooms[0] ? rooms[0].id : null;
+            }
+
+            const activeRoom = rooms.find(r => r.id === activeRoomId) || null;
+            let activeLayoutId = raw && raw.activeLayoutId;
+            if (!activeRoom || !activeRoom.layouts.find(l => l.id === activeLayoutId)) {
+                activeLayoutId = activeRoom && activeRoom.layouts[0] ? activeRoom.layouts[0].id : null;
+            }
+
+            return {
+                rooms,
+                activeRoomId,
+                activeLayoutId
+            };
         }
 
         function autoSave() {
@@ -1830,6 +1866,10 @@
                 alert('Please create a room first.');
                 return;
             }
+            const room = getActiveRoom();
+            const layout = getActiveLayout();
+            document.getElementById('roomNameInput').value = room ? room.name : '';
+            document.getElementById('layoutNameInput').value = layout ? layout.name : '';
             document.getElementById('roomWidth').value = roomWidth;
             document.getElementById('roomHeight').value = roomHeight;
             document.getElementById('fixedMoveStep').value = String(fixedMoveStep);
@@ -1846,8 +1886,19 @@
         }
 
         function applyRoomSettings() {
+            const room = getActiveRoom();
+            const layout = getActiveLayout();
+            if (room) {
+                const roomName = document.getElementById('roomNameInput').value.trim();
+                room.name = roomName || room.name;
+            }
+            if (layout) {
+                const layoutName = document.getElementById('layoutNameInput').value.trim();
+                layout.name = layoutName || layout.name;
+            }
             roomWidth = parseInt(document.getElementById('roomWidth').value) || 575;
             roomHeight = parseInt(document.getElementById('roomHeight').value) || 585;
+            refreshRoomLayoutSelectors();
             updateRoomInfo();
             hideRoomSettings();
             autoSave();
@@ -1972,16 +2023,19 @@
         }
 
         function saveLayout() {
-            if (!hasActiveLayout()) {
-                alert('Please create a room first.');
-                return;
-            }
-            const data = JSON.stringify(getWorkspaceData(), null, 2);
+            autoSave();
+            const backup = {
+                version: 2,
+                type: 'full_backup',
+                exportedAt: new Date().toISOString(),
+                appState: cloneData(appState)
+            };
+            const data = JSON.stringify(backup, null, 2);
             const blob = new Blob([data], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'room-layout.json';
+            a.download = 'room-planner-backup.json';
             a.click();
         }
 
@@ -1993,6 +2047,18 @@
             reader.onload = function(event) {
                 try {
                     const data = JSON.parse(event.target.result);
+
+                    if (data && data.type === 'full_backup' && data.appState) {
+                        appState = normalizeAppState(data.appState);
+                        persistAppState();
+                        refreshRoomLayoutSelectors();
+                        loadActiveLayoutToWorkspace();
+                        populateFurnitureGrid();
+                        draw();
+                        e.target.value = '';
+                        return;
+                    }
+
                     if (!hasActiveLayout()) {
                         if (appState.rooms.length >= MAX_ROOMS) {
                             alert(`Rooms are limited to ${MAX_ROOMS}. Delete one room first, then import.`);
