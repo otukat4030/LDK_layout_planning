@@ -216,6 +216,42 @@
             margin: 15px 0;
             font-size: 13px;
         }
+
+        .fixed-element-item {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .fixed-element-info {
+            flex: 1;
+        }
+
+        .fixed-element-name {
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .fixed-element-details {
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        .saved-furniture-item {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
     </style>
 </head>
 <body>
@@ -223,7 +259,8 @@
         <h1>Room Planner</h1>
         <div>
             <button class="btn btn-secondary" onclick="showRoomSettings()">⚙️</button>
-            <button class="btn btn-primary" onclick="saveLayout()">💾</button>
+            <button class="btn btn-primary" onclick="saveLayout()">💾 JSON</button>
+            <button class="btn btn-primary" onclick="savePNG()">💾 PNG</button>
             <button class="btn btn-success" onclick="document.getElementById('fileInput').click()">📂</button>
             <input type="file" id="fileInput" accept=".json" onchange="loadLayout(event)" class="hidden">
         </div>
@@ -247,7 +284,17 @@
         <div class="modal-content" onclick="event.stopPropagation()">
             <h2>Add Furniture</h2>
             <button class="custom-btn" onclick="showCustomForm()">+ Create Custom Furniture</button>
+            <button class="btn btn-secondary" onclick="showManageFurniture()" style="width: 100%; margin-bottom: 15px;">📝 Manage Saved Furniture</button>
             <div class="furniture-grid" id="furnitureGrid"></div>
+        </div>
+    </div>
+
+    <!-- Manage Furniture Modal -->
+    <div id="manageFurnitureModal" class="modal" onclick="hideManageFurniture()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h2>Manage Saved Furniture</h2>
+            <div id="savedFurnitureList"></div>
+            <button class="btn btn-secondary" onclick="hideManageFurniture()" style="width: 100%; margin-top: 10px;">Close</button>
         </div>
     </div>
 
@@ -290,11 +337,53 @@
                 <label>Room Height (cm)</label>
                 <input type="number" id="roomHeight" value="585">
             </div>
+
+            <h3 style="margin-top: 20px; margin-bottom: 10px; font-size: 16px;">Fixed Elements</h3>
+            <div id="fixedElementsList"></div>
+            <button class="custom-btn" onclick="addFixedElement()">+ Add Fixed Element</button>
+
             <div class="notice">
-                Note: Changing room size will not move existing furniture.
+                Note: You can edit or delete fixed room elements (Kitchen, Bath, etc.)
             </div>
             <button class="btn btn-secondary" onclick="hideRoomSettings()" style="width: 48%; margin-right: 4%;">Cancel</button>
             <button class="btn btn-primary" onclick="applyRoomSettings()" style="width: 48%;">Apply</button>
+        </div>
+    </div>
+
+    <!-- Add Fixed Element Modal -->
+    <div id="addFixedModal" class="modal" onclick="hideAddFixedModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h2>Add Fixed Element</h2>
+            <div class="form-group">
+                <label>Name</label>
+                <input type="text" id="fixedName" placeholder="e.g., Window">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>X Position (cm)</label>
+                    <input type="number" id="fixedX" placeholder="0">
+                </div>
+                <div class="form-group">
+                    <label>Y Position (cm)</label>
+                    <input type="number" id="fixedY" placeholder="0">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Width (cm)</label>
+                    <input type="number" id="fixedW" placeholder="100">
+                </div>
+                <div class="form-group">
+                    <label>Height (cm)</label>
+                    <input type="number" id="fixedD" placeholder="10">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Color</label>
+                <div class="color-picker" id="fixedColorPicker"></div>
+            </div>
+            <button class="btn btn-secondary" onclick="hideAddFixedModal()" style="width: 48%; margin-right: 4%;">Cancel</button>
+            <button class="btn btn-primary" onclick="confirmAddFixedElement()" style="width: 48%;">Add</button>
         </div>
     </div>
 
@@ -309,6 +398,8 @@
         let draggedItem = null;
         let dragOffset = { x: 0, y: 0 };
         let selectedColor = '#E8F5E9';
+        let selectedFixedColor = '#BDBDBD';
+        let userFurniture = []; // User's saved custom furniture
 
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
@@ -330,7 +421,7 @@
         ];
 
         // Fixed room elements
-        const fixed = [
+        let fixed = [
             { name: 'Bath Room', x: 0, y: 0, w: 180, d: 60, color: '#BDBDBD' },
             { name: 'Kitchen', x: 0, y: 60, w: 60, d: 165, color: '#90CAF9' },
             { name: 'Door', x: 180, y: 0, w: 80, d: 10, color: '#A1887F' },
@@ -372,6 +463,18 @@
         function populateFurnitureGrid() {
             const grid = document.getElementById('furnitureGrid');
             grid.innerHTML = '';
+
+            // Add user's saved furniture first
+            userFurniture.forEach(f => {
+                const div = document.createElement('div');
+                div.className = 'furniture-item';
+                div.style.backgroundColor = f.color;
+                div.innerHTML = `<div class="furniture-name">⭐ ${f.name}</div><div class="furniture-size">${f.w}×${f.d}cm</div>`;
+                div.onclick = () => addFurniture(f);
+                grid.appendChild(div);
+            });
+
+            // Then add preset furniture
             furniture.forEach(f => {
                 const div = document.createElement('div');
                 div.className = 'furniture-item';
@@ -403,6 +506,43 @@
             const scale = size / Math.max(roomWidth, roomHeight);
 
             ctx.clearRect(0, 0, size, size);
+
+            // Draw axes with measurements
+            ctx.fillStyle = '#333';
+            ctx.font = '10px Arial';
+            ctx.textAlign = 'center';
+
+            // X-axis labels (bottom)
+            for (let i = 0; i <= roomWidth; i += 100) {
+                const x = i * scale;
+                ctx.fillText(i + 'cm', x, roomHeight * scale + 15);
+                // Tick mark
+                ctx.strokeStyle = '#666';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(x, roomHeight * scale);
+                ctx.lineTo(x, roomHeight * scale + 5);
+                ctx.stroke();
+            }
+
+            // Y-axis labels (left side)
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            for (let i = 0; i <= roomHeight; i += 100) {
+                const y = i * scale;
+                ctx.fillText(i + 'cm', -5, y);
+                // Tick mark
+                ctx.strokeStyle = '#666';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(-5, y);
+                ctx.stroke();
+            }
+
+            // Reset text alignment
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
 
             // Room outline
             ctx.strokeStyle = '#333';
@@ -552,6 +692,17 @@
                 return;
             }
 
+            const newFurniture = {
+                name: name,
+                w: w,
+                d: d,
+                color: selectedColor
+            };
+
+            // Save to user's furniture library
+            userFurniture.push(newFurniture);
+
+            // Add to room
             items.push({
                 id: Date.now(),
                 name: name,
@@ -567,6 +718,7 @@
             document.getElementById('customDepth').value = '';
             hideCustomForm();
             hideFurnitureMenu();
+            populateFurnitureGrid(); // Refresh grid
             draw();
         }
 
@@ -601,9 +753,122 @@
             document.getElementById('customModal').classList.remove('active');
         }
 
+        function showManageFurniture() {
+            const list = document.getElementById('savedFurnitureList');
+            list.innerHTML = '';
+
+            if (userFurniture.length === 0) {
+                list.innerHTML = '<p style="text-align: center; color: #6b7280; padding: 20px;">No saved furniture yet. Create custom furniture to save them!</p>';
+            } else {
+                userFurniture.forEach((f, idx) => {
+                    const div = document.createElement('div');
+                    div.className = 'saved-furniture-item';
+                    div.style.backgroundColor = f.color;
+                    div.innerHTML = `
+                        <div>
+                            <div class="furniture-name">${f.name}</div>
+                            <div class="furniture-size">${f.w}×${f.d}cm</div>
+                        </div>
+                        <button class="btn btn-danger" onclick="deleteSavedFurniture(${idx}); event.stopPropagation();">Delete</button>
+                    `;
+                    list.appendChild(div);
+                });
+            }
+
+            document.getElementById('manageFurnitureModal').classList.add('active');
+        }
+
+        function hideManageFurniture() {
+            document.getElementById('manageFurnitureModal').classList.remove('active');
+        }
+
+        function deleteSavedFurniture(index) {
+            if (confirm('Delete this furniture from your saved list?')) {
+                userFurniture.splice(index, 1);
+                populateFurnitureGrid();
+                showManageFurniture(); // Refresh the list
+            }
+        }
+
+        function populateFixedElementsList() {
+            const list = document.getElementById('fixedElementsList');
+            list.innerHTML = '';
+
+            fixed.forEach((f, idx) => {
+                const div = document.createElement('div');
+                div.className = 'fixed-element-item';
+                div.style.backgroundColor = f.color;
+                div.innerHTML = `
+                    <div class="fixed-element-info">
+                        <div class="fixed-element-name">${f.name}</div>
+                        <div class="fixed-element-details">Position: (${f.x}, ${f.y})cm, Size: ${f.w}×${f.d}cm</div>
+                    </div>
+                    <button class="btn btn-danger" onclick="deleteFixedElement(${idx}); event.stopPropagation();">Delete</button>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function deleteFixedElement(index) {
+            if (confirm('Delete this fixed element?')) {
+                fixed.splice(index, 1);
+                populateFixedElementsList();
+                draw();
+            }
+        }
+
+        function addFixedElement() {
+            document.getElementById('fixedName').value = '';
+            document.getElementById('fixedX').value = '';
+            document.getElementById('fixedY').value = '';
+            document.getElementById('fixedW').value = '';
+            document.getElementById('fixedD').value = '';
+            populateFixedColorPicker();
+            document.getElementById('addFixedModal').classList.add('active');
+        }
+
+        function hideAddFixedModal() {
+            document.getElementById('addFixedModal').classList.remove('active');
+        }
+
+        function populateFixedColorPicker() {
+            const picker = document.getElementById('fixedColorPicker');
+            picker.innerHTML = '';
+            colors.forEach(c => {
+                const div = document.createElement('div');
+                div.className = 'color-option' + (c === selectedFixedColor ? ' selected' : '');
+                div.style.backgroundColor = c;
+                div.onclick = () => {
+                    selectedFixedColor = c;
+                    document.querySelectorAll('#fixedColorPicker .color-option').forEach(el => el.classList.remove('selected'));
+                    div.classList.add('selected');
+                };
+                picker.appendChild(div);
+            });
+        }
+
+        function confirmAddFixedElement() {
+            const name = document.getElementById('fixedName').value;
+            const x = parseInt(document.getElementById('fixedX').value);
+            const y = parseInt(document.getElementById('fixedY').value);
+            const w = parseInt(document.getElementById('fixedW').value);
+            const d = parseInt(document.getElementById('fixedD').value);
+
+            if (!name || isNaN(x) || isNaN(y) || !w || !d) {
+                alert('Please fill in all fields');
+                return;
+            }
+
+            fixed.push({ name, x, y, w, d, color: selectedFixedColor });
+            hideAddFixedModal();
+            populateFixedElementsList();
+            draw();
+        }
+
         function showRoomSettings() {
             document.getElementById('roomWidth').value = roomWidth;
             document.getElementById('roomHeight').value = roomHeight;
+            populateFixedElementsList();
             document.getElementById('roomModal').classList.add('active');
         }
 
@@ -619,8 +884,121 @@
             draw();
         }
 
+        function savePNG() {
+            // Create a temporary canvas with extra space for labels
+            const tempCanvas = document.createElement('canvas');
+            const size = 800; // Higher resolution for better quality
+            const padding = 40; // Space for axis labels
+            tempCanvas.width = size + padding;
+            tempCanvas.height = size + padding;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            // Fill white background
+            tempCtx.fillStyle = 'white';
+            tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+            // Translate to make room for axes
+            tempCtx.translate(padding, 0);
+
+            const scale = size / Math.max(roomWidth, roomHeight);
+
+            // Draw axes with measurements
+            tempCtx.fillStyle = '#333';
+            tempCtx.font = '12px Arial';
+            tempCtx.textAlign = 'center';
+
+            // X-axis labels
+            for (let i = 0; i <= roomWidth; i += 100) {
+                const x = i * scale;
+                tempCtx.fillText(i + 'cm', x, roomHeight * scale + 20);
+                tempCtx.strokeStyle = '#666';
+                tempCtx.lineWidth = 1;
+                tempCtx.beginPath();
+                tempCtx.moveTo(x, roomHeight * scale);
+                tempCtx.lineTo(x, roomHeight * scale + 5);
+                tempCtx.stroke();
+            }
+
+            // Y-axis labels
+            tempCtx.textAlign = 'right';
+            tempCtx.textBaseline = 'middle';
+            for (let i = 0; i <= roomHeight; i += 100) {
+                const y = i * scale;
+                tempCtx.fillText(i + 'cm', -8, y);
+                tempCtx.strokeStyle = '#666';
+                tempCtx.lineWidth = 1;
+                tempCtx.beginPath();
+                tempCtx.moveTo(0, y);
+                tempCtx.lineTo(-5, y);
+                tempCtx.stroke();
+            }
+
+            tempCtx.textAlign = 'center';
+            tempCtx.textBaseline = 'middle';
+
+            // Room outline
+            tempCtx.strokeStyle = '#333';
+            tempCtx.lineWidth = 2;
+            tempCtx.strokeRect(0, 0, roomWidth * scale, roomHeight * scale);
+
+            // Grid
+            tempCtx.strokeStyle = '#e0e0e0';
+            tempCtx.lineWidth = 0.5;
+            for (let i = 0; i <= roomWidth; i += 50) {
+                tempCtx.beginPath();
+                tempCtx.moveTo(i * scale, 0);
+                tempCtx.lineTo(i * scale, roomHeight * scale);
+                tempCtx.stroke();
+            }
+            for (let i = 0; i <= roomHeight; i += 50) {
+                tempCtx.beginPath();
+                tempCtx.moveTo(0, i * scale);
+                tempCtx.lineTo(roomWidth * scale, i * scale);
+                tempCtx.stroke();
+            }
+
+            // Fixed elements
+            fixed.forEach(f => {
+                tempCtx.fillStyle = f.color;
+                tempCtx.fillRect(f.x * scale, f.y * scale, f.w * scale, f.d * scale);
+                tempCtx.strokeStyle = '#666';
+                tempCtx.lineWidth = 2;
+                tempCtx.strokeRect(f.x * scale, f.y * scale, f.w * scale, f.d * scale);
+                tempCtx.fillStyle = '#333';
+                tempCtx.font = '14px Arial';
+                tempCtx.fillText(f.name, (f.x + f.w/2) * scale, (f.y + f.d/2) * scale);
+            });
+
+            // Furniture
+            items.forEach(item => {
+                tempCtx.globalAlpha = 0.9;
+                tempCtx.fillStyle = item.color;
+                tempCtx.fillRect(item.x * scale, item.y * scale, item.w * scale, item.d * scale);
+                tempCtx.globalAlpha = 1;
+                tempCtx.strokeStyle = '#333';
+                tempCtx.lineWidth = 2;
+                tempCtx.strokeRect(item.x * scale, item.y * scale, item.w * scale, item.d * scale);
+                tempCtx.fillStyle = '#333';
+                tempCtx.font = '14px Arial';
+                tempCtx.fillText(item.name, (item.x + item.w/2) * scale, (item.y + item.d/2) * scale);
+                tempCtx.font = '11px Arial';
+                tempCtx.fillStyle = '#666';
+                tempCtx.fillText(`${item.w}×${item.d}cm`, (item.x + item.w/2) * scale, (item.y + item.d/2 + 15) * scale);
+            });
+
+            // Download
+            tempCanvas.toBlob(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'room-layout.png';
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+        }
+
         function saveLayout() {
-            const data = JSON.stringify({ roomWidth, roomHeight, items }, null, 2);
+            const data = JSON.stringify({ roomWidth, roomHeight, items, fixed, userFurniture }, null, 2);
             const blob = new Blob([data], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -640,7 +1018,10 @@
                     if (data.roomWidth) roomWidth = data.roomWidth;
                     if (data.roomHeight) roomHeight = data.roomHeight;
                     if (data.items) items = data.items;
+                    if (data.fixed) fixed = data.fixed;
+                    if (data.userFurniture) userFurniture = data.userFurniture;
                     document.getElementById('roomInfo').textContent = `Room Size: ${roomWidth}cm × ${roomHeight}cm`;
+                    populateFurnitureGrid();
                     draw();
                 } catch (err) {
                     alert('Failed to load layout: ' + err.message);
