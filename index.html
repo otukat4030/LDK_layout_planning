@@ -107,6 +107,24 @@
             justify-content: center;
         }
 
+        /* Keep Room Settings open as a side panel so the canvas stays visible/editable */
+        #roomModal.active {
+            align-items: flex-start;
+            justify-content: flex-end;
+            background: transparent;
+            pointer-events: none;
+            padding: 16px;
+        }
+
+        #roomModal .modal-content {
+            width: min(420px, calc(100vw - 32px));
+            max-width: 420px;
+            border-radius: 12px;
+            max-height: calc(100vh - 32px);
+            pointer-events: auto;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+        }
+
         .modal-content {
             background: white;
             width: 100%;
@@ -242,6 +260,21 @@
             color: #6b7280;
         }
 
+        .fixed-element-actions {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            margin-left: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .btn-small {
+            padding: 4px 8px;
+            font-size: 12px;
+            margin-left: 0;
+        }
+
         .saved-furniture-item {
             background: #f9fafb;
             border: 1px solid #e5e7eb;
@@ -258,24 +291,25 @@
     <div class="header">
         <h1>Room Planner</h1>
         <div>
-            <button class="btn btn-secondary" onclick="showRoomSettings()">⚙️</button>
-            <button class="btn btn-primary" onclick="saveLayout()">💾 JSON</button>
-            <button class="btn btn-primary" onclick="saveToLocalStorage(true)">💾 Local</button>
-            <button class="btn btn-primary" onclick="savePNG()">💾 PNG</button>
-            <button class="btn btn-success" onclick="document.getElementById('fileInput').click()">📂</button>
+            <button class="btn btn-secondary" onclick="showRoomSettings()">Settings</button>
+            <button class="btn btn-primary" onclick="saveLayout()">Save JSON</button>
+            <button class="btn btn-primary" onclick="saveToLocalStorage(true)">Save Local</button>
+            <button class="btn btn-primary" onclick="savePNG()">Save PNG</button>
+            <button class="btn btn-success" onclick="document.getElementById('fileInput').click()">Open</button>
             <input type="file" id="fileInput" accept=".json" onchange="loadLayout(event)" class="hidden">
         </div>
     </div>
 
-    <div class="room-info" id="roomInfo">Room Size: 575cm × 585cm</div>
+    <div class="room-info" id="roomInfo">Room Size: 575cm x 585cm</div>
 
     <div class="canvas-container">
         <canvas id="canvas"></canvas>
     </div>
 
     <div class="controls" id="controls">
-        <button class="btn btn-primary" onclick="rotateSelected()">🔄 Rotate</button>
-        <button class="btn btn-danger" onclick="deleteSelected()">🗑️ Delete</button>
+        <button class="btn btn-primary" onclick="rotateSelected()"> Rotate</button>
+        <button class="btn btn-secondary" onclick="setSelectedPrice()">Price</button>
+        <button class="btn btn-danger" onclick="deleteSelected()">Delete</button>
     </div>
 
     <button class="fab" onclick="showFurnitureMenu()">+</button>
@@ -285,7 +319,7 @@
         <div class="modal-content" onclick="event.stopPropagation()">
             <h2>Add Furniture</h2>
             <button class="custom-btn" onclick="showCustomForm()">+ Create Custom Furniture</button>
-            <button class="btn btn-secondary" onclick="showManageFurniture()" style="width: 100%; margin-bottom: 15px;">📝 Manage Saved Furniture</button>
+            <button class="btn btn-secondary" onclick="showManageFurniture()" style="width: 100%; margin-bottom: 15px;">Manage Saved Furniture</button>
             <div class="furniture-grid" id="furnitureGrid"></div>
         </div>
     </div>
@@ -318,6 +352,10 @@
                 </div>
             </div>
             <div class="form-group">
+                <label>Price (JPY)</label>
+                <input type="number" id="customPrice" placeholder="50000" min="0">
+            </div>
+            <div class="form-group">
                 <label>Color</label>
                 <div class="color-picker" id="colorPicker"></div>
             </div>
@@ -344,7 +382,7 @@
             <button class="custom-btn" onclick="addFixedElement()">+ Add Fixed Element</button>
 
             <div class="notice">
-                Note: You can edit or delete fixed room elements (Kitchen, Bath, etc.)
+                Note: You can edit/delete fixed room elements, drag them on the canvas, or move them from the list with Select/L/U/D/R.
             </div>
             <button class="btn btn-secondary" onclick="hideRoomSettings()" style="width: 48%; margin-right: 4%;">Cancel</button>
             <button class="btn btn-primary" onclick="applyRoomSettings()" style="width: 48%;">Apply</button>
@@ -396,8 +434,11 @@
         let roomHeight = 585;
         let items = [];
         let selectedId = null;
+        let selectedFixedIndex = null;
         let draggedItem = null;
+        let draggedFixed = null;
         let dragOffset = { x: 0, y: 0 };
+        let fixedDragOffset = { x: 0, y: 0 };
         let selectedColor = '#E8F5E9';
         let selectedFixedColor = '#BDBDBD';
         let userFurniture = []; // User's saved custom furniture
@@ -407,18 +448,20 @@
 
         // Furniture catalog
         const furniture = [
-            { name: 'Bed', w: 195, d: 140, color: '#FFE4E1' },
-            { name: 'Desk', w: 120, d: 60, color: '#E6F3FF' },
-            { name: 'Sofa', w: 179, d: 74.5, color: '#E8F5E9' },
-            { name: 'TV Board', w: 180, d: 42, color: '#FFF9C4' },
-            { name: 'Dining Table', w: 76, d: 76, color: '#FFE0B2' },
-            { name: 'Chair', w: 64, d: 69, color: '#F3E5F5' },
-            { name: 'Refrigerator', w: 60, d: 50, color: '#E0E0E0' },
-            { name: 'Bookshelf', w: 120, d: 28, color: '#D7CCC8' },
-            { name: 'Side Board', w: 120, d: 42, color: '#CFD8DC' },
-            { name: 'Rug', w: 180, d: 180, color: '#FFEBEE' },
-            { name: 'Center Table', w: 76, d: 38, color: '#FFF3E0' },
-            { name: 'Lamp', w: 42, d: 42, color: '#FFF9C4' }
+            { name: 'Bed', w: 195, d: 140, color: '#FFE4E1', price: 140000 },
+            { name: 'Desk', w: 120, d: 60, color: '#E6F3FF', price: 0 },
+            { name: 'Sofa', w: 179, d: 74.5, color: '#E8F5E9', price: 100000 },
+            { name: 'TV Board', w: 180, d: 42, color: '#FFF9C4', price: 22500 },
+            { name: 'Dining Table', w: 76, d: 76, color: '#FFE0B2', price: 120000 },
+            { name: 'Rounge Chair', w: 64, d: 69, color: '#F3E5F5', price: 0 },
+            { name: 'Refrigerator', w: 60, d: 50, color: '#E0E0E0', price: 0 },
+            { name: 'Bookshelf', w: 120, d: 28, color: '#D7CCC8', price: 0 },
+            { name: 'Side Board', w: 120, d: 42, color: '#CFD8DC', price: 0 },
+            { name: 'Rug', w: 240, d: 170, color: '#FFEBEE', price: 0 },
+            { name: 'Center Table', w: 76, d: 38, color: '#FFF3E0', price: 39600 },
+            { name: 'Lamp', w: 42, d: 42, color: '#FFF9C4', price: 0 },
+            { name: 'wagon', w: 43, d:42, color: "White", price: 0},
+            { name: 'cabinet', w:119, d:40, color: "#D7CCC8", price: 0}
         ];
 
         // Fixed room elements
@@ -426,10 +469,32 @@
             { name: 'Bath Room', x: 0, y: 0, w: 180, d: 60, color: '#BDBDBD' },
             { name: 'Kitchen', x: 0, y: 60, w: 60, d: 165, color: '#90CAF9' },
             { name: 'Door', x: 180, y: 0, w: 80, d: 10, color: '#A1887F' },
-            { name: 'Closet', x: 265, y: 0, w: 200, d: 10, color: '#BCAAA4' }
+            { name: 'Closet', x: 265, y: 0, w: 200, d: 10, color: '#BCAAA4' },
+            { name: 'Wall', x: 175, y: 0, w: 5, d: 120, color: '#BCAAA4' },
+            { name: 'Wall', x: 260, y: 0, w: 5, d: 80, color: '#BCAAA4' },
+            { name: 'Window', x: 105, y: 575, w: 180*2, d: 10, color: '#BCAAA4' },
+            { name: "Window", x: 565, y: 585-415-120, w: 10, d: 120, color: '#BCAAA4' }
         ];
 
         const colors = ['#FFE4E1', '#E6F3FF', '#E8F5E9', '#FFF9C4', '#FFE0B2', '#F3E5F5', '#E0E0E0', '#D7CCC8'];
+
+        function normalizePrice(value) {
+            const price = Number(value);
+            return Number.isFinite(price) && price >= 0 ? Math.round(price) : 0;
+        }
+
+        function formatYen(value) {
+            return new Intl.NumberFormat('ja-JP').format(normalizePrice(value));
+        }
+
+        function calculateTotalPrice() {
+            return items.reduce((sum, item) => sum + normalizePrice(item.price), 0);
+        }
+
+        function updateRoomInfo() {
+            document.getElementById('roomInfo').textContent =
+                `Room Size: ${roomWidth}cm x ${roomHeight}cm | Total: JPY ${formatYen(calculateTotalPrice())}`;
+        }
 
         function getLayoutData() {
             return {
@@ -467,11 +532,11 @@
 
             roomWidth = data.roomWidth || roomWidth;
             roomHeight = data.roomHeight || roomHeight;
-            items = data.items || [];
+            items = (data.items || []).map(item => ({ ...item, price: normalizePrice(item.price) }));
             fixed = data.fixed || [];
-            userFurniture = data.userFurniture || [];
+            userFurniture = (data.userFurniture || []).map(f => ({ ...f, price: normalizePrice(f.price) }));
 
-            document.getElementById('roomInfo').textContent = `Room Size: ${roomWidth}cm ﾃ・${roomHeight}cm`;
+            updateRoomInfo();
             populateFurnitureGrid();
         }
 
@@ -515,7 +580,7 @@
                 const div = document.createElement('div');
                 div.className = 'furniture-item';
                 div.style.backgroundColor = f.color;
-                div.innerHTML = `<div class="furniture-name">⭐ ${f.name}</div><div class="furniture-size">${f.w}×${f.d}cm</div>`;
+                div.innerHTML = `<div class="furniture-name">${f.name}</div><div class="furniture-size">${f.w} x ${f.d}cm</div><div class="furniture-size">JPY ${formatYen(f.price)}</div>`;
                 div.onclick = () => addFurniture(f);
                 grid.appendChild(div);
             });
@@ -525,7 +590,7 @@
                 const div = document.createElement('div');
                 div.className = 'furniture-item';
                 div.style.backgroundColor = f.color;
-                div.innerHTML = `<div class="furniture-name">${f.name}</div><div class="furniture-size">${f.w}×${f.d}cm</div>`;
+                div.innerHTML = `<div class="furniture-name">${f.name}</div><div class="furniture-size">${f.w} x ${f.d}cm</div><div class="furniture-size">JPY ${formatYen(f.price)}</div>`;
                 div.onclick = () => addFurniture(f);
                 grid.appendChild(div);
             });
@@ -550,6 +615,7 @@
         function draw() {
             const size = canvas.width;
             const scale = size / Math.max(roomWidth, roomHeight);
+            updateRoomInfo();
 
             ctx.clearRect(0, 0, size, size);
 
@@ -612,11 +678,11 @@
             }
 
             // Fixed elements
-            fixed.forEach(f => {
+            fixed.forEach((f, idx) => {
                 ctx.fillStyle = f.color;
                 ctx.fillRect(f.x * scale, f.y * scale, f.w * scale, f.d * scale);
-                ctx.strokeStyle = '#666';
-                ctx.lineWidth = 1.5;
+                ctx.strokeStyle = idx === selectedFixedIndex ? '#2563eb' : '#666';
+                ctx.lineWidth = idx === selectedFixedIndex ? 3 : 1.5;
                 ctx.strokeRect(f.x * scale, f.y * scale, f.w * scale, f.d * scale);
                 ctx.fillStyle = '#333';
                 ctx.font = '10px Arial';
@@ -639,7 +705,8 @@
                 ctx.fillText(item.name, (item.x + item.w/2) * scale, (item.y + item.d/2) * scale);
                 ctx.font = '8px Arial';
                 ctx.fillStyle = '#666';
-                ctx.fillText(`${item.w}×${item.d}cm`, (item.x + item.w/2) * scale, (item.y + item.d/2 + 12) * scale);
+                ctx.fillText(`${item.w} x ${item.d}cm`, (item.x + item.w/2) * scale, (item.y + item.d/2 + 12) * scale);
+                ctx.fillText(`JPY ${formatYen(item.price)}`, (item.x + item.w/2) * scale, (item.y + item.d/2 + 22) * scale);
             });
         }
 
@@ -662,12 +729,40 @@
             return null;
         }
 
+        function findFixedElementIndex(x, y) {
+            for (let i = fixed.length - 1; i >= 0; i--) {
+                const f = fixed[i];
+                if (x >= f.x && x <= f.x + f.w && y >= f.y && y <= f.y + f.d) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        function isRoomSettingsActive() {
+            return document.getElementById('roomModal').classList.contains('active');
+        }
+
         function onMouseDown(e) {
             const pos = getPos(e.clientX, e.clientY);
+            if (isRoomSettingsActive()) {
+                const fixedIndex = findFixedElementIndex(pos.x, pos.y);
+                if (fixedIndex >= 0) {
+                    selectedFixedIndex = fixedIndex;
+                    selectedId = null;
+                    draggedFixed = fixed[fixedIndex];
+                    fixedDragOffset = { x: pos.x - draggedFixed.x, y: pos.y - draggedFixed.y };
+                    document.getElementById('controls').style.display = 'none';
+                    draw();
+                    return;
+                }
+            }
+
             const item = findItem(pos.x, pos.y);
             if (item) {
                 draggedItem = item;
                 selectedId = item.id;
+                selectedFixedIndex = null;
                 dragOffset = { x: pos.x - item.x, y: pos.y - item.y };
                 document.getElementById('controls').style.display = 'block';
                 draw();
@@ -675,15 +770,31 @@
         }
 
         function onMouseMove(e) {
-            if (!draggedItem) return;
             const pos = getPos(e.clientX, e.clientY);
-            draggedItem.x = Math.max(0, Math.min(roomWidth - draggedItem.w, pos.x - dragOffset.x));
-            draggedItem.y = Math.max(0, Math.min(roomHeight - draggedItem.d, pos.y - dragOffset.y));
+            if (draggedItem) {
+                draggedItem.x = Math.max(0, Math.min(roomWidth - draggedItem.w, pos.x - dragOffset.x));
+                draggedItem.y = Math.max(0, Math.min(roomHeight - draggedItem.d, pos.y - dragOffset.y));
+                draw();
+                return;
+            }
+            if (draggedFixed) {
+                draggedFixed.x = Math.max(0, Math.min(roomWidth - draggedFixed.w, pos.x - fixedDragOffset.x));
+                draggedFixed.y = Math.max(0, Math.min(roomHeight - draggedFixed.d, pos.y - fixedDragOffset.y));
+                if (isRoomSettingsActive()) {
+                    populateFixedElementsList();
+                }
+                draw();
+                return;
+            }
             draw();
         }
 
         function onMouseUp() {
+            if (draggedFixed && isRoomSettingsActive()) {
+                populateFixedElementsList();
+            }
             draggedItem = null;
+            draggedFixed = null;
             autoSave();
         }
 
@@ -691,10 +802,24 @@
             e.preventDefault();
             const touch = e.touches[0];
             const pos = getPos(touch.clientX, touch.clientY);
+            if (isRoomSettingsActive()) {
+                const fixedIndex = findFixedElementIndex(pos.x, pos.y);
+                if (fixedIndex >= 0) {
+                    selectedFixedIndex = fixedIndex;
+                    selectedId = null;
+                    draggedFixed = fixed[fixedIndex];
+                    fixedDragOffset = { x: pos.x - draggedFixed.x, y: pos.y - draggedFixed.y };
+                    document.getElementById('controls').style.display = 'none';
+                    draw();
+                    return;
+                }
+            }
+
             const item = findItem(pos.x, pos.y);
             if (item) {
                 draggedItem = item;
                 selectedId = item.id;
+                selectedFixedIndex = null;
                 dragOffset = { x: pos.x - item.x, y: pos.y - item.y };
                 document.getElementById('controls').style.display = 'block';
                 draw();
@@ -703,16 +828,32 @@
 
         function onTouchMove(e) {
             e.preventDefault();
-            if (!draggedItem) return;
             const touch = e.touches[0];
             const pos = getPos(touch.clientX, touch.clientY);
-            draggedItem.x = Math.max(0, Math.min(roomWidth - draggedItem.w, pos.x - dragOffset.x));
-            draggedItem.y = Math.max(0, Math.min(roomHeight - draggedItem.d, pos.y - dragOffset.y));
+            if (draggedItem) {
+                draggedItem.x = Math.max(0, Math.min(roomWidth - draggedItem.w, pos.x - dragOffset.x));
+                draggedItem.y = Math.max(0, Math.min(roomHeight - draggedItem.d, pos.y - dragOffset.y));
+                draw();
+                return;
+            }
+            if (draggedFixed) {
+                draggedFixed.x = Math.max(0, Math.min(roomWidth - draggedFixed.w, pos.x - fixedDragOffset.x));
+                draggedFixed.y = Math.max(0, Math.min(roomHeight - draggedFixed.d, pos.y - fixedDragOffset.y));
+                if (isRoomSettingsActive()) {
+                    populateFixedElementsList();
+                }
+                draw();
+                return;
+            }
             draw();
         }
 
         function onTouchEnd() {
+            if (draggedFixed && isRoomSettingsActive()) {
+                populateFixedElementsList();
+            }
             draggedItem = null;
+            draggedFixed = null;
             autoSave();
         }
 
@@ -724,7 +865,8 @@
                 y: 100,
                 w: f.w,
                 d: f.d,
-                color: f.color
+                color: f.color,
+                price: normalizePrice(f.price)
             });
             hideFurnitureMenu();
             autoSave();
@@ -735,6 +877,7 @@
             const name = document.getElementById('customName').value;
             const w = parseInt(document.getElementById('customWidth').value);
             const d = parseInt(document.getElementById('customDepth').value);
+            const price = normalizePrice(document.getElementById('customPrice').value);
 
             if (!name || !w || !d) {
                 alert('Please fill in all fields');
@@ -745,7 +888,8 @@
                 name: name,
                 w: w,
                 d: d,
-                color: selectedColor
+                color: selectedColor,
+                price: price
             };
 
             // Save to user's furniture library
@@ -759,15 +903,35 @@
                 y: 100,
                 w: w,
                 d: d,
-                color: selectedColor
+                color: selectedColor,
+                price: price
             });
 
             document.getElementById('customName').value = '';
             document.getElementById('customWidth').value = '';
             document.getElementById('customDepth').value = '';
+            document.getElementById('customPrice').value = '';
             hideCustomForm();
             hideFurnitureMenu();
             populateFurnitureGrid(); // Refresh grid
+            autoSave();
+            draw();
+        }
+
+        function setSelectedPrice() {
+            const item = items.find(i => i.id === selectedId);
+            if (!item) return;
+
+            const input = prompt('Set furniture price (JPY)', String(normalizePrice(item.price)));
+            if (input === null) return;
+
+            const parsed = Number(input);
+            if (!Number.isFinite(parsed) || parsed < 0) {
+                alert('Please enter a valid non-negative number.');
+                return;
+            }
+
+            item.price = Math.round(parsed);
             autoSave();
             draw();
         }
@@ -819,7 +983,8 @@
                     div.innerHTML = `
                         <div>
                             <div class="furniture-name">${f.name}</div>
-                            <div class="furniture-size">${f.w}×${f.d}cm</div>
+                            <div class="furniture-size">${f.w} x ${f.d}cm</div>
+                            <div class="furniture-size">JPY ${formatYen(f.price)}</div>
                         </div>
                         <button class="btn btn-danger" onclick="deleteSavedFurniture(${idx}); event.stopPropagation();">Delete</button>
                     `;
@@ -851,20 +1016,56 @@
                 const div = document.createElement('div');
                 div.className = 'fixed-element-item';
                 div.style.backgroundColor = f.color;
+                if (idx === selectedFixedIndex) {
+                    div.style.borderColor = '#2563eb';
+                    div.style.boxShadow = '0 0 0 2px rgba(37, 99, 235, 0.2)';
+                }
                 div.innerHTML = `
                     <div class="fixed-element-info">
                         <div class="fixed-element-name">${f.name}</div>
-                        <div class="fixed-element-details">Position: (${f.x}, ${f.y})cm, Size: ${f.w}×${f.d}cm</div>
+                        <div class="fixed-element-details">Position: (${f.x}, ${f.y})cm, Size: ${f.w} x ${f.d}cm</div>
                     </div>
-                    <button class="btn btn-danger" onclick="deleteFixedElement(${idx}); event.stopPropagation();">Delete</button>
+                    <div class="fixed-element-actions">
+                        <button class="btn btn-secondary btn-small" onclick="selectFixedElement(${idx}); event.stopPropagation();">Select</button>
+                        <button class="btn btn-secondary btn-small" onclick="nudgeFixedElement(${idx}, -10, 0); event.stopPropagation();">L</button>
+                        <button class="btn btn-secondary btn-small" onclick="nudgeFixedElement(${idx}, 0, -10); event.stopPropagation();">U</button>
+                        <button class="btn btn-secondary btn-small" onclick="nudgeFixedElement(${idx}, 0, 10); event.stopPropagation();">D</button>
+                        <button class="btn btn-secondary btn-small" onclick="nudgeFixedElement(${idx}, 10, 0); event.stopPropagation();">R</button>
+                        <button class="btn btn-danger btn-small" onclick="deleteFixedElement(${idx}); event.stopPropagation();">Delete</button>
+                    </div>
                 `;
                 list.appendChild(div);
             });
         }
 
+        function selectFixedElement(index) {
+            if (!fixed[index]) return;
+            selectedFixedIndex = index;
+            selectedId = null;
+            document.getElementById('controls').style.display = 'none';
+            populateFixedElementsList();
+            draw();
+        }
+
+        function nudgeFixedElement(index, dx, dy) {
+            const target = fixed[index];
+            if (!target) return;
+            target.x = Math.max(0, Math.min(roomWidth - target.w, target.x + dx));
+            target.y = Math.max(0, Math.min(roomHeight - target.d, target.y + dy));
+            selectedFixedIndex = index;
+            populateFixedElementsList();
+            autoSave();
+            draw();
+        }
+
         function deleteFixedElement(index) {
             if (confirm('Delete this fixed element?')) {
                 fixed.splice(index, 1);
+                if (selectedFixedIndex === index) {
+                    selectedFixedIndex = null;
+                } else if (selectedFixedIndex !== null && selectedFixedIndex > index) {
+                    selectedFixedIndex -= 1;
+                }
                 populateFixedElementsList();
                 autoSave();
                 draw();
@@ -923,18 +1124,22 @@
         function showRoomSettings() {
             document.getElementById('roomWidth').value = roomWidth;
             document.getElementById('roomHeight').value = roomHeight;
+            selectedFixedIndex = null;
             populateFixedElementsList();
             document.getElementById('roomModal').classList.add('active');
         }
 
         function hideRoomSettings() {
             document.getElementById('roomModal').classList.remove('active');
+            selectedFixedIndex = null;
+            draggedFixed = null;
+            draw();
         }
 
         function applyRoomSettings() {
             roomWidth = parseInt(document.getElementById('roomWidth').value) || 575;
             roomHeight = parseInt(document.getElementById('roomHeight').value) || 585;
-            document.getElementById('roomInfo').textContent = `Room Size: ${roomWidth}cm × ${roomHeight}cm`;
+            updateRoomInfo();
             hideRoomSettings();
             autoSave();
             draw();
@@ -1039,7 +1244,7 @@
                 tempCtx.fillText(item.name, (item.x + item.w/2) * scale, (item.y + item.d/2) * scale);
                 tempCtx.font = '11px Arial';
                 tempCtx.fillStyle = '#666';
-                tempCtx.fillText(`${item.w}×${item.d}cm`, (item.x + item.w/2) * scale, (item.y + item.d/2 + 15) * scale);
+                tempCtx.fillText(`${item.w} x ${item.d}cm`, (item.x + item.w/2) * scale, (item.y + item.d/2 + 15) * scale);
             });
 
             // Download
@@ -1073,10 +1278,10 @@
                     const data = JSON.parse(event.target.result);
                     if (data.roomWidth) roomWidth = data.roomWidth;
                     if (data.roomHeight) roomHeight = data.roomHeight;
-                    if (data.items) items = data.items;
+                    if (data.items) items = data.items.map(item => ({ ...item, price: normalizePrice(item.price) }));
                     if (data.fixed) fixed = data.fixed;
-                    if (data.userFurniture) userFurniture = data.userFurniture;
-                    document.getElementById('roomInfo').textContent = `Room Size: ${roomWidth}cm × ${roomHeight}cm`;
+                    if (data.userFurniture) userFurniture = data.userFurniture.map(f => ({ ...f, price: normalizePrice(f.price) }));
+                    updateRoomInfo();
                     populateFurnitureGrid();
                     autoSave();
                     draw();
