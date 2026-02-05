@@ -23,11 +23,29 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
         }
 
         .header h1 {
             font-size: 20px;
             font-weight: bold;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .header-select {
+            padding: 8px 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 14px;
+            background: white;
         }
 
         .btn {
@@ -56,6 +74,29 @@
             padding: 20px;
             text-align: center;
             overflow: auto;
+            position: relative;
+            min-height: 280px;
+        }
+
+        .empty-state {
+            background: white;
+            border: 2px dashed #cbd5e1;
+            border-radius: 12px;
+            padding: 28px 20px;
+            max-width: 520px;
+            margin: 20px auto;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+        }
+
+        .empty-state h3 {
+            font-size: 22px;
+            margin-bottom: 10px;
+            color: #1f2937;
+        }
+
+        .empty-state p {
+            color: #4b5563;
+            margin-bottom: 16px;
         }
 
         #canvas {
@@ -275,6 +316,56 @@
             margin-left: 0;
         }
 
+        .fixed-move-step {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .fixed-move-step label {
+            font-size: 13px;
+            color: #374151;
+            white-space: nowrap;
+        }
+
+        .fixed-move-step select {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 14px;
+            background: white;
+        }
+
+        @media (max-width: 768px) {
+            #roomModal.active {
+                align-items: flex-end;
+                justify-content: center;
+                padding: 8px;
+            }
+
+            #roomModal .modal-content {
+                width: 100%;
+                max-width: none;
+                border-radius: 16px 16px 0 0;
+                max-height: 70vh;
+            }
+
+            .fixed-element-actions {
+                width: 100%;
+                margin-left: 0;
+                margin-top: 8px;
+                justify-content: flex-start;
+            }
+
+            .btn-small {
+                min-width: 42px;
+                min-height: 42px;
+                font-size: 14px;
+            }
+        }
+
         .saved-furniture-item {
             background: #f9fafb;
             border: 1px solid #e5e7eb;
@@ -290,12 +381,21 @@
 <body>
     <div class="header">
         <h1>Room Planner</h1>
-        <div>
+        <div class="header-actions">
+            <select id="roomSelect" class="header-select" onchange="onRoomChange(this.value)"></select>
+            <button class="btn btn-success" onclick="createRoom()">+ Room</button>
+            <button class="btn btn-danger" onclick="deleteCurrentRoom()">- Room</button>
+            <select id="layoutSelect" class="header-select" onchange="onLayoutChange(this.value)"></select>
+            <button class="btn btn-success" onclick="createLayout()">+ Layout</button>
+            <button class="btn btn-danger" onclick="deleteCurrentLayout()">- Layout</button>
             <button class="btn btn-secondary" onclick="showRoomSettings()">Settings</button>
-            <button class="btn btn-primary" onclick="saveLayout()">Save JSON</button>
-            <button class="btn btn-primary" onclick="saveToLocalStorage(true)">Save Local</button>
+            <!-- <button class="btn btn-primary" onclick="saveLayout()">Save JSON</button> -->
+            <button class="btn btn-primary" onclick="saveCurrentLayout(true)">Save</button>
+            <button class="btn btn-primary" onclick="shareCurrentRoom()">Share Room</button>
+            <button class="btn btn-primary" onclick="shareCurrentLayout()">Share Layout</button>
             <button class="btn btn-primary" onclick="savePNG()">Save PNG</button>
-            <button class="btn btn-success" onclick="document.getElementById('fileInput').click()">Open</button>
+            <button class="btn btn-danger" onclick="resetCurrentLayout()">Reset</button>
+            <!-- <button class="btn btn-success" onclick="document.getElementById('fileInput').click()">Open</button> -->
             <input type="file" id="fileInput" accept=".json" onchange="loadLayout(event)" class="hidden">
         </div>
     </div>
@@ -303,6 +403,11 @@
     <div class="room-info" id="roomInfo">Room Size: 575cm x 585cm</div>
 
     <div class="canvas-container">
+        <div id="emptyState" class="empty-state hidden">
+            <h3>Let's create a room</h3>
+            <p>Create your first room to start planning layouts.</p>
+            <button class="btn btn-success" onclick="createRoom()">+ Create First Room</button>
+        </div>
         <canvas id="canvas"></canvas>
     </div>
 
@@ -312,7 +417,7 @@
         <button class="btn btn-danger" onclick="deleteSelected()">Delete</button>
     </div>
 
-    <button class="fab" onclick="showFurnitureMenu()">+</button>
+    <button id="addFurnitureFab" class="fab" onclick="showFurnitureMenu()">+</button>
 
     <!-- Furniture Menu -->
     <div id="furnitureModal" class="modal" onclick="hideFurnitureMenu()">
@@ -378,11 +483,20 @@
             </div>
 
             <h3 style="margin-top: 20px; margin-bottom: 10px; font-size: 16px;">Fixed Elements</h3>
+            <div class="fixed-move-step">
+                <label for="fixedMoveStep">Move Step</label>
+                <select id="fixedMoveStep" onchange="updateFixedMoveStep(this.value)">
+                    <option value="5">5 cm</option>
+                    <option value="10" selected>10 cm</option>
+                    <option value="20">20 cm</option>
+                    <option value="50">50 cm</option>
+                </select>
+            </div>
             <div id="fixedElementsList"></div>
             <button class="custom-btn" onclick="addFixedElement()">+ Add Fixed Element</button>
 
             <div class="notice">
-                Note: You can edit/delete fixed room elements, drag them on the canvas, or move them from the list with Select/L/U/D/R.
+                Note: You can edit/delete fixed room elements, drag them on the canvas, or move them from the list with Select and arrow buttons.
             </div>
             <button class="btn btn-secondary" onclick="hideRoomSettings()" style="width: 48%; margin-right: 4%;">Cancel</button>
             <button class="btn btn-primary" onclick="applyRoomSettings()" style="width: 48%;">Apply</button>
@@ -441,6 +555,7 @@
         let fixedDragOffset = { x: 0, y: 0 };
         let selectedColor = '#E8F5E9';
         let selectedFixedColor = '#BDBDBD';
+        let fixedMoveStep = 10;
         let userFurniture = []; // User's saved custom furniture
 
         const canvas = document.getElementById('canvas');
@@ -460,8 +575,8 @@
             { name: 'Rug', w: 240, d: 170, color: '#FFEBEE', price: 0 },
             { name: 'Center Table', w: 76, d: 38, color: '#FFF3E0', price: 39600 },
             { name: 'Lamp', w: 42, d: 42, color: '#FFF9C4', price: 0 },
-            { name: 'wagon', w: 43, d:42, color: "White", price: 0},
-            { name: 'cabinet', w:119, d:40, color: "#D7CCC8", price: 0}
+            { name: 'Wagon', w: 43, d:42, color: "White", price: 0},
+            { name: 'Cabinet', w:119, d:40, color: "#D7CCC8", price: 0}
         ];
 
         // Fixed room elements
@@ -477,6 +592,17 @@
         ];
 
         const colors = ['#FFE4E1', '#E6F3FF', '#E8F5E9', '#FFF9C4', '#FFE0B2', '#F3E5F5', '#E0E0E0', '#D7CCC8'];
+        const STORAGE_KEY = 'roomPlannerDataV2';
+        const LEGACY_STORAGE_KEY = 'roomPlannerData';
+        const SHARE_HASH_PREFIX = '#share=';
+        const MAX_ROOMS = 5;
+        const MAX_LAYOUTS_PER_ROOM = 5;
+
+        let appState = {
+            rooms: [],
+            activeRoomId: null,
+            activeLayoutId: null
+        };
 
         function normalizePrice(value) {
             const price = Number(value);
@@ -492,59 +618,617 @@
         }
 
         function updateRoomInfo() {
+            if (!hasActiveLayout()) {
+                document.getElementById('roomInfo').textContent = 'No room selected';
+                return;
+            }
             document.getElementById('roomInfo').textContent =
                 `Room Size: ${roomWidth}cm x ${roomHeight}cm | Total: JPY ${formatYen(calculateTotalPrice())}`;
         }
 
-        function getLayoutData() {
+        function cloneData(data) {
+            return JSON.parse(JSON.stringify(data));
+        }
+
+        function toBase64Url(text) {
+            const bytes = new TextEncoder().encode(text);
+            let binary = '';
+            bytes.forEach(b => { binary += String.fromCharCode(b); });
+            return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        }
+
+        function fromBase64Url(base64Url) {
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+            const binary = atob(padded);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return new TextDecoder().decode(bytes);
+        }
+
+        function generateId(prefix) {
+            return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        }
+
+        function createEmptyWorkspace() {
             return {
-                roomWidth,
-                roomHeight,
-                items,
-                fixed,
-                userFurniture
+                roomWidth: 575,
+                roomHeight: 585,
+                items: [],
+                fixed: [],
+                userFurniture: []
             };
         }
 
-        function saveToLocalStorage(showMessage = false) {
-            localStorage.setItem('roomPlannerData', JSON.stringify(getLayoutData()));
-            if (showMessage) {
-                alert('Layout saved to localStorage.');
+        function getLayoutDataForStorage() {
+            return {
+                roomWidth,
+                roomHeight,
+                items: cloneData(items),
+                userFurniture: cloneData(userFurniture)
+            };
+        }
+
+        function getWorkspaceData() {
+            return {
+                roomWidth,
+                roomHeight,
+                items: cloneData(items),
+                fixed: cloneData(fixed),
+                userFurniture: cloneData(userFurniture)
+            };
+        }
+
+        function applyWorkspaceData(data) {
+            roomWidth = Number(data?.roomWidth) > 0 ? Number(data.roomWidth) : 575;
+            roomHeight = Number(data?.roomHeight) > 0 ? Number(data.roomHeight) : 585;
+            items = (data?.items || []).map(item => ({ ...item, price: normalizePrice(item.price) }));
+            fixed = cloneData(data?.fixed || []);
+            userFurniture = (data?.userFurniture || []).map(f => ({ ...f, price: normalizePrice(f.price) }));
+            selectedId = null;
+            selectedFixedIndex = null;
+            draggedItem = null;
+            draggedFixed = null;
+        }
+
+        function getActiveRoom() {
+            return appState.rooms.find(r => r.id === appState.activeRoomId) || null;
+        }
+
+        function getActiveLayout() {
+            const room = getActiveRoom();
+            if (!room) return null;
+            return room.layouts.find(l => l.id === appState.activeLayoutId) || null;
+        }
+
+        function serializeSharePayload(payload) {
+            return toBase64Url(JSON.stringify(payload));
+        }
+
+        function deserializeSharePayload(encoded) {
+            return JSON.parse(fromBase64Url(encoded));
+        }
+
+        function buildShareUrl(payload) {
+            const encoded = serializeSharePayload(payload);
+            return `${window.location.origin}${window.location.pathname}${SHARE_HASH_PREFIX}${encoded}`;
+        }
+
+        async function copyOrShareLink(title, url) {
+            if (navigator.share) {
+                try {
+                    await navigator.share({ title, url });
+                    return true;
+                } catch (err) {
+                    // Fallback to clipboard on share cancellation/failure.
+                }
+            }
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(url);
+                return true;
+            }
+            prompt('Copy this link', url);
+            return true;
+        }
+
+        function hasActiveLayout() {
+            return !!getActiveLayout();
+        }
+
+        function getRoomFixedForWorkspace(room, layout) {
+            if (room && Array.isArray(room.fixed)) {
+                return cloneData(room.fixed);
+            }
+            if (layout && layout.data && Array.isArray(layout.data.fixed)) {
+                return cloneData(layout.data.fixed);
+            }
+            return [];
+        }
+
+        function persistAppState() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+        }
+
+        function updateWorkspaceVisibility() {
+            const empty = !hasActiveLayout();
+            document.getElementById('emptyState').classList.toggle('hidden', !empty);
+            canvas.style.display = empty ? 'none' : 'inline-block';
+            document.getElementById('controls').style.display = 'none';
+            const fab = document.getElementById('addFurnitureFab');
+            if (fab) {
+                fab.style.display = empty ? 'none' : 'block';
+            }
+            if (empty) {
+                document.getElementById('roomInfo').textContent = 'No room selected';
+            }
+        }
+
+        function refreshRoomLayoutSelectors() {
+            const roomSelect = document.getElementById('roomSelect');
+            const layoutSelect = document.getElementById('layoutSelect');
+            const room = getActiveRoom();
+
+            roomSelect.innerHTML = '';
+            if (appState.rooms.length === 0) {
+                roomSelect.innerHTML = '<option value="">No Rooms</option>';
+            } else {
+                appState.rooms.forEach(r => {
+                    const opt = document.createElement('option');
+                    opt.value = r.id;
+                    opt.textContent = r.name;
+                    roomSelect.appendChild(opt);
+                });
+                roomSelect.value = appState.activeRoomId || appState.rooms[0].id;
+            }
+
+            layoutSelect.innerHTML = '';
+            if (!room || room.layouts.length === 0) {
+                layoutSelect.innerHTML = '<option value="">No Layouts</option>';
+            } else {
+                room.layouts.forEach(l => {
+                    const opt = document.createElement('option');
+                    opt.value = l.id;
+                    opt.textContent = l.name;
+                    layoutSelect.appendChild(opt);
+                });
+                layoutSelect.value = appState.activeLayoutId || room.layouts[0].id;
+            }
+        }
+
+        function loadActiveLayoutToWorkspace() {
+            const room = getActiveRoom();
+            const layout = getActiveLayout();
+            if (!layout) {
+                applyWorkspaceData(createEmptyWorkspace());
+                populateFurnitureGrid();
+                updateWorkspaceVisibility();
+                draw();
+                return;
+            }
+            const layoutData = layout.data || createEmptyWorkspace();
+            const merged = {
+                roomWidth: layoutData.roomWidth,
+                roomHeight: layoutData.roomHeight,
+                items: layoutData.items || [],
+                userFurniture: layoutData.userFurniture || [],
+                fixed: getRoomFixedForWorkspace(room, layout)
+            };
+            applyWorkspaceData(merged);
+            refreshRoomLayoutSelectors();
+            updateWorkspaceVisibility();
+            populateFurnitureGrid();
+            draw();
+        }
+
+        function migrateLegacyDataIfNeeded() {
+            const legacySaved = localStorage.getItem(LEGACY_STORAGE_KEY);
+            if (!legacySaved) return false;
+            try {
+                const legacy = JSON.parse(legacySaved);
+                const roomId = generateId('room');
+                const layoutId = generateId('layout');
+                appState = {
+                    rooms: [
+                        {
+                            id: roomId,
+                            name: 'Imported Room',
+                            fixed: cloneData(legacy.fixed || []),
+                            layouts: [
+                                {
+                                    id: layoutId,
+                                    name: 'Layout 1',
+                                    data: {
+                                        roomWidth: legacy.roomWidth || 575,
+                                        roomHeight: legacy.roomHeight || 585,
+                                        items: cloneData(legacy.items || []),
+                                        userFurniture: cloneData(legacy.userFurniture || [])
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    activeRoomId: roomId,
+                    activeLayoutId: layoutId
+                };
+                applyWorkspaceData({
+                    roomWidth: legacy.roomWidth || 575,
+                    roomHeight: legacy.roomHeight || 585,
+                    items: cloneData(legacy.items || []),
+                    userFurniture: cloneData(legacy.userFurniture || []),
+                    fixed: cloneData(legacy.fixed || [])
+                });
+                getActiveLayout().data = getLayoutDataForStorage();
+                persistAppState();
+                localStorage.removeItem(LEGACY_STORAGE_KEY);
+                return true;
+            } catch (err) {
+                console.warn('Failed to migrate legacy data:', err);
+                return false;
+            }
+        }
+
+        function loadAppState() {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    const rooms = Array.isArray(parsed.rooms) ? parsed.rooms.slice(0, MAX_ROOMS) : [];
+                    rooms.forEach(room => {
+                        room.layouts = Array.isArray(room.layouts) ? room.layouts.slice(0, MAX_LAYOUTS_PER_ROOM) : [];
+                        if (!Array.isArray(room.fixed)) {
+                            const firstLayout = room.layouts[0];
+                            room.fixed = cloneData((firstLayout && firstLayout.data && firstLayout.data.fixed) || []);
+                        }
+                        room.layouts.forEach(layout => {
+                            if (!layout.data) {
+                                layout.data = createEmptyWorkspace();
+                            }
+                            if (Array.isArray(layout.data.fixed)) {
+                                delete layout.data.fixed;
+                            }
+                        });
+                    });
+                    appState = {
+                        rooms,
+                        activeRoomId: parsed.activeRoomId || (rooms[0] ? rooms[0].id : null),
+                        activeLayoutId: parsed.activeLayoutId || null
+                    };
+                } catch (err) {
+                    console.warn('Failed to parse app state:', err);
+                    appState = { rooms: [], activeRoomId: null, activeLayoutId: null };
+                }
+            } else {
+                appState = { rooms: [], activeRoomId: null, activeLayoutId: null };
+                migrateLegacyDataIfNeeded();
+            }
+
+            const room = getActiveRoom() || appState.rooms[0] || null;
+            appState.activeRoomId = room ? room.id : null;
+            if (room) {
+                const layout = room.layouts.find(l => l.id === appState.activeLayoutId) || room.layouts[0] || null;
+                appState.activeLayoutId = layout ? layout.id : null;
+            } else {
+                appState.activeLayoutId = null;
             }
         }
 
         function autoSave() {
-            saveToLocalStorage(false);
+            const layout = getActiveLayout();
+            const room = getActiveRoom();
+            if (!layout || !room) return;
+            layout.data = getLayoutDataForStorage();
+            room.fixed = cloneData(fixed);
+            persistAppState();
         }
 
-        function loadAutoSave() {
-            const saved = localStorage.getItem('roomPlannerData');
-            if (!saved) return;
-
-            let data;
-            try {
-                data = JSON.parse(saved);
-            } catch (err) {
-                console.warn('Failed to parse localStorage data:', err);
-                localStorage.removeItem('roomPlannerData');
+        function saveCurrentLayout(showMessage = false) {
+            if (!hasActiveLayout()) {
+                alert('Please create a room first.');
                 return;
             }
-
-            roomWidth = data.roomWidth || roomWidth;
-            roomHeight = data.roomHeight || roomHeight;
-            items = (data.items || []).map(item => ({ ...item, price: normalizePrice(item.price) }));
-            fixed = data.fixed || [];
-            userFurniture = (data.userFurniture || []).map(f => ({ ...f, price: normalizePrice(f.price) }));
-
-            updateRoomInfo();
-            populateFurnitureGrid();
+            autoSave();
+            if (showMessage) {
+                alert('Current layout saved to localStorage.');
+            }
         }
 
-        // Initialize
+        function createRoom() {
+            if (appState.rooms.length >= MAX_ROOMS) {
+                alert(`Rooms are limited to ${MAX_ROOMS}.`);
+                return;
+            }
+            const defaultName = `Room ${appState.rooms.length + 1}`;
+            const name = prompt('Room name', defaultName);
+            if (name === null) return;
+            const roomName = name.trim() || defaultName;
+
+            const roomId = generateId('room');
+            const layoutId = generateId('layout');
+            const room = {
+                id: roomId,
+                name: roomName,
+                fixed: [],
+                layouts: [
+                    {
+                        id: layoutId,
+                        name: 'Layout 1',
+                        data: {
+                            roomWidth: 575,
+                            roomHeight: 585,
+                            items: [],
+                            userFurniture: []
+                        }
+                    }
+                ]
+            };
+            appState.rooms.push(room);
+            appState.activeRoomId = roomId;
+            appState.activeLayoutId = layoutId;
+            persistAppState();
+            loadActiveLayoutToWorkspace();
+        }
+
+        function createLayout() {
+            const room = getActiveRoom();
+            if (!room) {
+                alert('Please create a room first.');
+                return;
+            }
+            if (room.layouts.length >= MAX_LAYOUTS_PER_ROOM) {
+                alert(`Layouts are limited to ${MAX_LAYOUTS_PER_ROOM} per room.`);
+                return;
+            }
+            const defaultName = `Layout ${room.layouts.length + 1}`;
+            const name = prompt('Layout name', defaultName);
+            if (name === null) return;
+            const layoutName = name.trim() || defaultName;
+
+            const layoutId = generateId('layout');
+            room.layouts.push({
+                id: layoutId,
+                name: layoutName,
+                data: getLayoutDataForStorage()
+            });
+            appState.activeLayoutId = layoutId;
+            persistAppState();
+            refreshRoomLayoutSelectors();
+        }
+
+        function deleteCurrentRoom() {
+            const room = getActiveRoom();
+            if (!room) {
+                alert('No room selected.');
+                return;
+            }
+            if (!confirm(`Delete room "${room.name}" and all its layouts?`)) return;
+
+            appState.rooms = appState.rooms.filter(r => r.id !== room.id);
+
+            if (appState.rooms.length === 0) {
+                appState.activeRoomId = null;
+                appState.activeLayoutId = null;
+                applyWorkspaceData(createEmptyWorkspace());
+            } else {
+                const nextRoom = appState.rooms[0];
+                appState.activeRoomId = nextRoom.id;
+                appState.activeLayoutId = nextRoom.layouts[0] ? nextRoom.layouts[0].id : null;
+            }
+
+            persistAppState();
+            refreshRoomLayoutSelectors();
+            loadActiveLayoutToWorkspace();
+        }
+
+        function deleteCurrentLayout() {
+            const room = getActiveRoom();
+            const layout = getActiveLayout();
+            if (!room || !layout) {
+                alert('No layout selected.');
+                return;
+            }
+            if (!confirm(`Delete layout "${layout.name}"?`)) return;
+
+            room.layouts = room.layouts.filter(l => l.id !== layout.id);
+            appState.activeLayoutId = room.layouts[0] ? room.layouts[0].id : null;
+
+            persistAppState();
+            refreshRoomLayoutSelectors();
+            loadActiveLayoutToWorkspace();
+        }
+
+        function onRoomChange(roomId) {
+            if (!roomId) return;
+            const room = appState.rooms.find(r => r.id === roomId);
+            if (!room) return;
+            appState.activeRoomId = room.id;
+            appState.activeLayoutId = room.layouts[0] ? room.layouts[0].id : null;
+            persistAppState();
+            loadActiveLayoutToWorkspace();
+        }
+
+        function onLayoutChange(layoutId) {
+            if (!layoutId) return;
+            const room = getActiveRoom();
+            if (!room || !room.layouts.find(l => l.id === layoutId)) return;
+            appState.activeLayoutId = layoutId;
+            persistAppState();
+            loadActiveLayoutToWorkspace();
+        }
+
+        function resetCurrentLayout() {
+            if (!hasActiveLayout()) {
+                alert('Please create a room first.');
+                return;
+            }
+            if (!confirm('Reset the current layout to a blank state?')) return;
+            const room = getActiveRoom();
+            applyWorkspaceData({
+                ...createEmptyWorkspace(),
+                fixed: cloneData((room && room.fixed) || [])
+            });
+            autoSave();
+            populateFurnitureGrid();
+            draw();
+        }
+
+        async function shareCurrentLayout() {
+            const room = getActiveRoom();
+            const layout = getActiveLayout();
+            if (!room || !layout) {
+                alert('Please create a room first.');
+                return;
+            }
+            const payload = {
+                version: 1,
+                type: 'layout',
+                roomName: room.name,
+                layoutName: layout.name,
+                data: getWorkspaceData()
+            };
+            const url = buildShareUrl(payload);
+            try {
+                await copyOrShareLink(`Layout: ${layout.name}`, url);
+                alert('Share link is ready.');
+            } catch (err) {
+                prompt('Copy this link', url);
+            }
+        }
+
+        async function shareCurrentRoom() {
+            const room = getActiveRoom();
+            if (!room) {
+                alert('Please create a room first.');
+                return;
+            }
+            const payload = {
+                version: 1,
+                type: 'room',
+                room: {
+                    name: room.name,
+                    fixed: cloneData(room.fixed || []),
+                    layouts: room.layouts.map(l => ({
+                        name: l.name,
+                        data: {
+                            roomWidth: l.data?.roomWidth || 575,
+                            roomHeight: l.data?.roomHeight || 585,
+                            items: cloneData(l.data?.items || []),
+                            userFurniture: cloneData(l.data?.userFurniture || [])
+                        }
+                    }))
+                }
+            };
+            const url = buildShareUrl(payload);
+            try {
+                await copyOrShareLink(`Room: ${room.name}`, url);
+                alert('Share link is ready.');
+            } catch (err) {
+                prompt('Copy this link', url);
+            }
+        }
+
+        function importSharedLayoutPayload(payload) {
+            const data = payload?.data || createEmptyWorkspace();
+            if (!hasActiveLayout()) {
+                if (appState.rooms.length >= MAX_ROOMS) {
+                    alert(`Rooms are limited to ${MAX_ROOMS}.`);
+                    return false;
+                }
+                const roomId = generateId('room');
+                const layoutId = generateId('layout');
+                appState.rooms.push({
+                    id: roomId,
+                    name: payload.roomName || `Room ${appState.rooms.length + 1}`,
+                    fixed: cloneData(data.fixed || []),
+                    layouts: [{
+                        id: layoutId,
+                        name: payload.layoutName || 'Layout 1',
+                        data: {
+                            roomWidth: data.roomWidth || 575,
+                            roomHeight: data.roomHeight || 585,
+                            items: cloneData(data.items || []),
+                            userFurniture: cloneData(data.userFurniture || [])
+                        }
+                    }]
+                });
+                appState.activeRoomId = roomId;
+                appState.activeLayoutId = layoutId;
+            } else {
+                const room = getActiveRoom();
+                data.fixed = cloneData((room && room.fixed) || []);
+            }
+            applyWorkspaceData(data);
+            autoSave();
+            return true;
+        }
+
+        function importSharedRoomPayload(payload) {
+            if (appState.rooms.length >= MAX_ROOMS) {
+                alert(`Rooms are limited to ${MAX_ROOMS}.`);
+                return false;
+            }
+            const sharedRoom = payload?.room;
+            if (!sharedRoom || !Array.isArray(sharedRoom.layouts) || sharedRoom.layouts.length === 0) {
+                alert('Invalid shared room data.');
+                return false;
+            }
+            const roomId = generateId('room');
+            const layouts = sharedRoom.layouts.slice(0, MAX_LAYOUTS_PER_ROOM).map((l, idx) => ({
+                id: generateId('layout'),
+                name: l.name || `Layout ${idx + 1}`,
+                data: {
+                    roomWidth: l.data?.roomWidth || 575,
+                    roomHeight: l.data?.roomHeight || 585,
+                    items: cloneData(l.data?.items || []),
+                    userFurniture: cloneData(l.data?.userFurniture || [])
+                }
+            }));
+            appState.rooms.push({
+                id: roomId,
+                name: sharedRoom.name || `Room ${appState.rooms.length + 1}`,
+                fixed: cloneData(sharedRoom.fixed || []),
+                layouts
+            });
+            appState.activeRoomId = roomId;
+            appState.activeLayoutId = layouts[0].id;
+            return true;
+        }
+
+        function handleShareLinkImport() {
+            if (!window.location.hash.startsWith(SHARE_HASH_PREFIX)) return;
+            const encoded = window.location.hash.slice(SHARE_HASH_PREFIX.length);
+            if (!encoded) return;
+            let payload;
+            try {
+                payload = deserializeSharePayload(encoded);
+            } catch (err) {
+                alert('Failed to read shared link.');
+                return;
+            }
+            const summary = payload.type === 'room'
+                ? `Room: ${(payload.room && payload.room.name) || 'Unnamed'}`
+                : `Layout: ${payload.layoutName || 'Unnamed'}`;
+            if (!confirm(`Import shared data?\n${summary}`)) {
+                return;
+            }
+            let imported = false;
+            if (payload.type === 'room') imported = importSharedRoomPayload(payload);
+            if (payload.type === 'layout') imported = importSharedLayoutPayload(payload);
+            if (!imported) return;
+            persistAppState();
+            refreshRoomLayoutSelectors();
+            loadActiveLayoutToWorkspace();
+            window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+        }
+
         function init() {
             console.log('Initializing...');
             setCanvasSize();
-            loadAutoSave();
+            loadAppState();
+            refreshRoomLayoutSelectors();
+            loadActiveLayoutToWorkspace();
+            handleShareLinkImport();
             populateFurnitureGrid();
             populateColorPicker();
             draw();
@@ -613,6 +1297,11 @@
         }
 
         function draw() {
+            if (!hasActiveLayout()) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                updateRoomInfo();
+                return;
+            }
             const size = canvas.width;
             const scale = size / Math.max(roomWidth, roomHeight);
             updateRoomInfo();
@@ -954,6 +1643,10 @@
         }
 
         function showFurnitureMenu() {
+            if (!hasActiveLayout()) {
+                alert('Please create a room first.');
+                return;
+            }
             document.getElementById('furnitureModal').classList.add('active');
         }
 
@@ -1027,10 +1720,10 @@
                     </div>
                     <div class="fixed-element-actions">
                         <button class="btn btn-secondary btn-small" onclick="selectFixedElement(${idx}); event.stopPropagation();">Select</button>
-                        <button class="btn btn-secondary btn-small" onclick="nudgeFixedElement(${idx}, -10, 0); event.stopPropagation();">L</button>
-                        <button class="btn btn-secondary btn-small" onclick="nudgeFixedElement(${idx}, 0, -10); event.stopPropagation();">U</button>
-                        <button class="btn btn-secondary btn-small" onclick="nudgeFixedElement(${idx}, 0, 10); event.stopPropagation();">D</button>
-                        <button class="btn btn-secondary btn-small" onclick="nudgeFixedElement(${idx}, 10, 0); event.stopPropagation();">R</button>
+                        <button class="btn btn-secondary btn-small" onclick="nudgeFixedElement(${idx}, 'left'); event.stopPropagation();">Left</button>
+                        <button class="btn btn-secondary btn-small" onclick="nudgeFixedElement(${idx}, 'up'); event.stopPropagation();">Up</button>
+                        <button class="btn btn-secondary btn-small" onclick="nudgeFixedElement(${idx}, 'down'); event.stopPropagation();">Down</button>
+                        <button class="btn btn-secondary btn-small" onclick="nudgeFixedElement(${idx}, 'right'); event.stopPropagation();">Right</button>
                         <button class="btn btn-danger btn-small" onclick="deleteFixedElement(${idx}); event.stopPropagation();">Delete</button>
                     </div>
                 `;
@@ -1047,15 +1740,26 @@
             draw();
         }
 
-        function nudgeFixedElement(index, dx, dy) {
+        function nudgeFixedElement(index, direction) {
             const target = fixed[index];
             if (!target) return;
+            let dx = 0;
+            let dy = 0;
+            if (direction === 'left') dx = -fixedMoveStep;
+            if (direction === 'right') dx = fixedMoveStep;
+            if (direction === 'up') dy = -fixedMoveStep;
+            if (direction === 'down') dy = fixedMoveStep;
             target.x = Math.max(0, Math.min(roomWidth - target.w, target.x + dx));
             target.y = Math.max(0, Math.min(roomHeight - target.d, target.y + dy));
             selectedFixedIndex = index;
             populateFixedElementsList();
             autoSave();
             draw();
+        }
+
+        function updateFixedMoveStep(value) {
+            const step = parseInt(value, 10);
+            fixedMoveStep = Number.isFinite(step) && step > 0 ? step : 10;
         }
 
         function deleteFixedElement(index) {
@@ -1122,8 +1826,13 @@
         }
 
         function showRoomSettings() {
+            if (!hasActiveLayout()) {
+                alert('Please create a room first.');
+                return;
+            }
             document.getElementById('roomWidth').value = roomWidth;
             document.getElementById('roomHeight').value = roomHeight;
+            document.getElementById('fixedMoveStep').value = String(fixedMoveStep);
             selectedFixedIndex = null;
             populateFixedElementsList();
             document.getElementById('roomModal').classList.add('active');
@@ -1146,6 +1855,10 @@
         }
 
         function savePNG() {
+            if (!hasActiveLayout()) {
+                alert('Please create a room first.');
+                return;
+            }
             // Create a temporary canvas with extra space for labels
             const tempCanvas = document.createElement('canvas');
             const size = 800; // Higher resolution for better quality
@@ -1259,7 +1972,11 @@
         }
 
         function saveLayout() {
-            const data = JSON.stringify(getLayoutData(), null, 2);
+            if (!hasActiveLayout()) {
+                alert('Please create a room first.');
+                return;
+            }
+            const data = JSON.stringify(getWorkspaceData(), null, 2);
             const blob = new Blob([data], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -1276,18 +1993,35 @@
             reader.onload = function(event) {
                 try {
                     const data = JSON.parse(event.target.result);
-                    if (data.roomWidth) roomWidth = data.roomWidth;
-                    if (data.roomHeight) roomHeight = data.roomHeight;
-                    if (data.items) items = data.items.map(item => ({ ...item, price: normalizePrice(item.price) }));
-                    if (data.fixed) fixed = data.fixed;
-                    if (data.userFurniture) userFurniture = data.userFurniture.map(f => ({ ...f, price: normalizePrice(f.price) }));
-                    updateRoomInfo();
+                    if (!hasActiveLayout()) {
+                        if (appState.rooms.length >= MAX_ROOMS) {
+                            alert(`Rooms are limited to ${MAX_ROOMS}. Delete one room first, then import.`);
+                            return;
+                        }
+                        const roomId = generateId('room');
+                        const layoutId = generateId('layout');
+                        appState.rooms.push({
+                            id: roomId,
+                            name: `Imported Room ${appState.rooms.length + 1}`,
+                            layouts: [{ id: layoutId, name: 'Layout 1', data: createEmptyWorkspace() }]
+                        });
+                        appState.activeRoomId = roomId;
+                        appState.activeLayoutId = layoutId;
+                    }
+                    const activeRoom = getActiveRoom();
+                    if (activeRoom && Array.isArray(data.fixed)) {
+                        activeRoom.fixed = cloneData(data.fixed);
+                    }
+                    applyWorkspaceData(data);
+                    refreshRoomLayoutSelectors();
+                    updateWorkspaceVisibility();
                     populateFurnitureGrid();
                     autoSave();
                     draw();
                 } catch (err) {
                     alert('Failed to load layout: ' + err.message);
                 }
+                e.target.value = '';
             };
             reader.readAsText(file);
         }
