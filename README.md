@@ -23,7 +23,7 @@ An interactive web-based tool for planning room layouts. Perfect for planning fu
 
 ## Demo
 
-🔗 [Try it here](https://yourusername.github.io/room-planner/)
+🔗 [Try it here](https://otukat4030.github.io/room-planner/)
 
 *(Replace with your actual GitHub Pages URL)*
 
