@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Room Layout Planner</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useRef, useEffect } = React;
+        const { Move, RotateCw, Trash2, Plus, Save, Upload, Settings } = lucide;
+
+        const RoomPlanner = () => {
+            const [items, setItems] = useState([]);
+            const [selectedId, setSelectedId] = useState(null);
+            const [draggedId, setDraggedId] = useState(null);
+            const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+            const [scale, setScale] = useState(1);
+            const [showMenu, setShowMenu] = useState(false);
+            const [showCustomForm, setShowCustomForm] = useState(false);
+            const [showRoomSettings, setShowRoomSettings] = useState(false);
+            const [customFurniture, setCustomFurniture] = useState({ name: '', w: '', d: '', color: '#E8F5E9' });
+            const [roomWidth, setRoomWidth] = useState(575);
+            const [roomHeight, setRoomHeight] = useState(585);
+            const canvasRef = useRef(null);
+            
+            const CANVAS_SIZE = 600;
+
+            // Preset furniture catalog
+            const furnitureCatalog = [
+                { name: 'Bed', w: 195, d: 140, color: '#FFE4E1', category: 'bedroom' },
+                { name: 'Desk', w: 120, d: 60, color: '#E6F3FF', category: 'work' },
+                { name: 'Sofa', w: 179, d: 74.5, color: '#E8F5E9', category: 'living' },
+                { name: 'TV Board', w: 180, d: 42, color: '#FFF9C4', category: 'living' },
+                { name: 'Dining Table', w: 76, d: 76, color: '#FFE0B2', category: 'dining' },
+                { name: 'Chair', w: 64, d: 69, color: '#F3E5F5', category: 'dining' },
+                { name: 'Refrigerator', w: 60, d: 50, color: '#E0E0E0', category: 'kitchen' },
+                { name: 'Bookshelf', w: 120, d: 28, color: '#D7CCC8', category: 'storage' },
+                { name: 'Side Board', w: 120, d: 42, color: '#CFD8DC', category: 'storage' },
+                { name: 'Rug', w: 180, d: 180, color: '#FFEBEE', category: 'decor' },
+                { name: 'Center Table', w: 76, d: 38, color: '#FFF3E0', category: 'living' },
+                { name: 'Lamp', w: 42, d: 42, color: '#FFF9C4', category: 'decor' },
+            ];
+
+            // Fixed room elements (initially positioned for 575x585 room)
+            const [fixedElements, setFixedElements] = useState([
+                { name: 'Bath Room', x: 0, y: 0, w: 180, d: 60, color: '#BDBDBD' },
+                { name: 'Kitchen', x: 0, y: 60, w: 60, d: 165, color: '#90CAF9' },
+                { name: 'Door', x: 180, y: 0, w: 80, d: 10, color: '#A1887F' },
+                { name: 'Closet', x: 265, y: 0, w: 200, d: 10, color: '#BCAAA4' },
+                { name: 'Window', x: 105, y: 575, w: 180, d: 10, color: '#B3E5FC' },
+                { name: 'Window', x: 285, y: 575, w: 180, d: 10, color: '#B3E5FC' },
+            ]);
+
+            useEffect(() => {
+                updateScale();
+                window.addEventListener('resize', updateScale);
+                return () => window.removeEventListener('resize', updateScale);
+            }, []);
+
+            const updateScale = () => {
+                if (canvasRef.current) {
+                    const container = canvasRef.current.parentElement;
+                    const containerWidth = container.clientWidth;
+                    const newScale = Math.min(1, (containerWidth - 40) / CANVAS_SIZE);
+                    setScale(newScale);
+                }
+            };
+
+            const addFurniture = (furniture) => {
+                const newItem = {
+                    id: Date.now(),
+                    name: furniture.name,
+                    x: 100,
+                    y: 100,
+                    w: furniture.w,
+                    d: furniture.d,
+                    color: furniture.color,
+                    rotation: 0
+                };
+                setItems([...items, newItem]);
+                setShowMenu(false);
+            };
+
+            const addCustomFurniture = () => {
+                if (!customFurniture.name || !customFurniture.w || !customFurniture.d) {
+                    alert('Please fill in all fields');
+                    return;
+                }
+                
+                const newItem = {
+                    id: Date.now(),
+                    name: customFurniture.name,
+                    x: 100,
+                    y: 100,
+                    w: parseInt(customFurniture.w),
+                    d: parseInt(customFurniture.d),
+                    color: customFurniture.color,
+                    rotation: 0
+                };
+                setItems([...items, newItem]);
+                setShowCustomForm(false);
+                setShowMenu(false);
+                setCustomFurniture({ name: '', w: '', d: '', color: '#E8F5E9' });
+            };
+
+            const handleTouchStart = (e, id) => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                const item = items.find(i => i.id === id);
+                if (!item) return;
+
+                const canvas = canvasRef.current;
+                const rect = canvas.getBoundingClientRect();
+                const clickX = (touch.clientX - rect.left) / scale;
+                const clickY = (touch.clientY - rect.top) / scale;
+
+                setDraggedId(id);
+                setSelectedId(id);
+                setDragOffset({
+                    x: clickX - item.x,
+                    y: clickY - item.y
+                });
+            };
+
+            const handleMouseDown = (e, id) => {
+                const item = items.find(i => i.id === id);
+                if (!item) return;
+
+                const canvas = canvasRef.current;
+                const rect = canvas.getBoundingClientRect();
+                const clickX = (e.clientX - rect.left) / scale;
+                const clickY = (e.clientY - rect.top) / scale;
+
+                setDraggedId(id);
+                setSelectedId(id);
+                setDragOffset({
+                    x: clickX - item.x,
+                    y: clickY - item.y
+                });
+            };
+
+            const handleTouchMove = (e) => {
+                if (!draggedId) return;
+                e.preventDefault();
+                
+                const touch = e.touches[0];
+                const canvas = canvasRef.current;
+                const rect = canvas.getBoundingClientRect();
+                const x = (touch.clientX - rect.left) / scale - dragOffset.x;
+                const y = (touch.clientY - rect.top) / scale - dragOffset.y;
+
+                setItems(items.map(item => 
+                    item.id === draggedId 
+                        ? { ...item, x: Math.max(0, Math.min(roomWidth - item.w, x)), 
+                                     y: Math.max(0, Math.min(roomHeight - item.d, y)) }
+                        : item
+                ));
+            };
+
+            const handleMouseMove = (e) => {
+                if (!draggedId) return;
+                
+                const canvas = canvasRef.current;
+                const rect = canvas.getBoundingClientRect();
+                const x = (e.clientX - rect.left) / scale - dragOffset.x;
+                const y = (e.clientY - rect.top) / scale - dragOffset.y;
+
+                setItems(items.map(item => 
+                    item.id === draggedId 
+                        ? { ...item, x: Math.max(0, Math.min(roomWidth - item.w, x)), 
+                                     y: Math.max(0, Math.min(roomHeight - item.d, y)) }
+                        : item
+                ));
+            };
+
+            const handleTouchEnd = () => {
+                setDraggedId(null);
+            };
+
+            const handleMouseUp = () => {
+                setDraggedId(null);
+            };
+
+            const rotateItem = (id) => {
+                setItems(items.map(item => {
+                    if (item.id === id) {
+                        return { ...item, w: item.d, d: item.w, rotation: (item.rotation + 90) % 360 };
+                    }
+                    return item;
+                }));
+            };
+
+            const deleteItem = (id) => {
+                setItems(items.filter(item => item.id !== id));
+                setSelectedId(null);
+            };
+
+            const saveLayout = () => {
+                const data = JSON.stringify({ roomWidth, roomHeight, items, fixedElements }, null, 2);
+                const blob = new Blob([data], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'room-layout.json';
+                a.click();
+            };
+
+            const loadLayout = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        try {
+                            const data = JSON.parse(event.target.result);
+                            if (data.roomWidth) setRoomWidth(data.roomWidth);
+                            if (data.roomHeight) setRoomHeight(data.roomHeight);
+                            if (data.items) setItems(data.items);
+                            if (data.fixedElements) setFixedElements(data.fixedElements);
+                        } catch (err) {
+                            alert('Failed to load layout');
+                        }
+                    };
+                    reader.readAsText(file);
+                }
+            };
+
+            const updateRoomSize = () => {
+                setShowRoomSettings(false);
+            };
+
+            return React.createElement('div', { className: "w-full h-screen bg-gray-50 flex flex-col" },
+                // Header
+                React.createElement('div', { className: "bg-white shadow-sm p-4 flex justify-between items-center" },
+                    React.createElement('h1', { className: "text-xl font-bold text-gray-800" }, 'Room Planner'),
+                    React.createElement('div', { className: "flex gap-2" },
+                        React.createElement('button', {
+                            onClick: () => setShowRoomSettings(true),
+                            className: "p-2 bg-gray-500 text-white rounded-lg"
+                        }, React.createElement(Settings, { size: 20 })),
+                        React.createElement('button', {
+                            onClick: saveLayout,
+                            className: "p-2 bg-blue-500 text-white rounded-lg"
+                        }, React.createElement(Save, { size: 20 })),
+                        React.createElement('label', {
+                            className: "p-2 bg-green-500 text-white rounded-lg cursor-pointer"
+                        },
+                            React.createElement(Upload, { size: 20 }),
+                            React.createElement('input', {
+                                type: "file",
+                                accept: ".json",
+                                onChange: loadLayout,
+                                className: "hidden"
+                            })
+                        )
+                    )
+                ),
+
+                // Room info
+                React.createElement('div', { className: "bg-blue-50 px-4 py-2 text-center text-sm text-gray-700" },
+                    `Room Size: ${roomWidth}cm × ${roomHeight}cm`
+                ),
+
+                // Canvas
+                React.createElement('div', { className: "flex-1 overflow-auto p-4" },
+                    React.createElement('div', { className: "flex justify-center" },
+                        React.createElement('svg', {
+                            ref: canvasRef,
+                            width: CANVAS_SIZE * scale,
+                            height: CANVAS_SIZE * scale,
+                            viewBox: `0 0 ${CANVAS_SIZE} ${CANVAS_SIZE}`,
+                            className: "bg-white shadow-lg rounded-lg",
+                            style: { touchAction: 'none' },
+                            onTouchMove: handleTouchMove,
+                            onTouchEnd: handleTouchEnd,
+                            onMouseMove: handleMouseMove,
+                            onMouseUp: handleMouseUp,
+                            onMouseLeave: handleMouseUp
+                        },
+                            // Room outline
+                            React.createElement('rect', {
+                                x: 0, y: 0,
+                                width: roomWidth,
+                                height: roomHeight,
+                                fill: "white",
+                                stroke: "#333",
+                                strokeWidth: "2"
+                            }),
+                            
+                            // Grid
+                            [...Array(Math.ceil(roomWidth/50) + 1)].map((_, i) =>
+                                React.createElement('line', {
+                                    key: `grid-v-${i}`,
+                                    x1: i * 50, y1: 0,
+                                    x2: i * 50, y2: roomHeight,
+                                    stroke: "#e0e0e0",
+                                    strokeWidth: "0.5"
+                                })
+                            ),
+                            [...Array(Math.ceil(roomHeight/50) + 1)].map((_, i) =>
+                                React.createElement('line', {
+                                    key: `grid-h-${i}`,
+                                    x1: 0, y1: i * 50,
+                                    x2: roomWidth, y2: i * 50,
+                                    stroke: "#e0e0e0",
+                                    strokeWidth: "0.5"
+                                })
+                            ),
+
+                            // Fixed elements
+                            fixedElements.map((elem, idx) =>
+                                React.createElement('g', { key: `fixed-${idx}` },
+                                    React.createElement('rect', {
+                                        x: elem.x, y: elem.y,
+                                        width: elem.w,
+                                        height: elem.d,
+                                        fill: elem.color,
+                                        stroke: "#666",
+                                        strokeWidth: "1.5"
+                                    }),
+                                    React.createElement('text', {
+                                        x: elem.x + elem.w/2,
+                                        y: elem.y + elem.d/2,
+                                        textAnchor: "middle",
+                                        dominantBaseline: "middle",
+                                        fontSize: "10",
+                                        fill: "#333"
+                                    }, elem.name)
+                                )
+                            ),
+
+                            // Furniture items
+                            items.map(item =>
+                                React.createElement('g', {
+                                    key: item.id,
+                                    onTouchStart: (e) => handleTouchStart(e, item.id),
+                                    onMouseDown: (e) => handleMouseDown(e, item.id),
+                                    style: { cursor: 'move' }
+                                },
+                                    React.createElement('rect', {
+                                        x: item.x, y: item.y,
+                                        width: item.w,
+                                        height: item.d,
+                                        fill: item.color,
+                                        stroke: selectedId === item.id ? '#2563eb' : '#333',
+                                        strokeWidth: selectedId === item.id ? '3' : '1.5',
+                                        opacity: "0.9"
+                                    }),
+                                    React.createElement('text', {
+                                        x: item.x + item.w/2,
+                                        y: item.y + item.d/2,
+                                        textAnchor: "middle",
+                                        dominantBaseline: "middle",
+                                        fontSize: "10",
+                                        fill: "#333",
+                                        pointerEvents: "none"
+                                    }, item.name),
+                                    React.createElement('text', {
+                                        x: item.x + item.w/2,
+                                        y: item.y + item.d/2 + 12,
+                                        textAnchor: "middle",
+                                        dominantBaseline: "middle",
+                                        fontSize: "8",
+                                        fill: "#666",
+                                        pointerEvents: "none"
+                                    }, `${item.w}×${item.d}cm`)
+                                )
+                            )
+                        )
+                    )
+                ),
+
+                // Selected item controls
+                selectedId && React.createElement('div', {
+                    className: "bg-white border-t p-4 flex gap-2 justify-center"
+                },
+                    React.createElement('button', {
+                        onClick: () => rotateItem(selectedId),
+                        className: "flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg"
+                    },
+                        React.createElement(RotateCw, { size: 18 }),
+                        ' Rotate'
+                    ),
+                    React.createElement('button', {
+                        onClick: () => deleteItem(selectedId),
+                        className: "flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg"
+                    },
+                        React.createElement(Trash2, { size: 18 }),
+                        ' Delete'
+                    )
+                ),
+
+                // Add furniture button
+                React.createElement('button', {
+                    onClick: () => setShowMenu(!showMenu),
+                    className: "fixed bottom-20 right-4 w-14 h-14 bg-blue-500 text-white rounded-full shadow-lg flex items-center justify-center z-50"
+                },
+                    React.createElement(Plus, { size: 28 })
+                ),
+
+                // Furniture menu
+                showMenu && React.createElement('div', {
+                    className: "fixed inset-0 bg-black bg-opacity-50 flex items-end z-40",
+                    onClick: () => setShowMenu(false)
+                },
+                    React.createElement('div', {
+                        className: "bg-white w-full max-h-96 rounded-t-2xl p-4 overflow-y-auto",
+                        onClick: (e) => e.stopPropagation()
+                    },
+                        React.createElement('h2', { className: "text-lg font-bold mb-4" }, 'Add Furniture'),
+                        
+                        React.createElement('button', {
+                            onClick: () => setShowCustomForm(true),
+                            className: "w-full p-4 mb-4 border-2 border-dashed border-blue-500 rounded-lg text-blue-500 font-semibold hover:bg-blue-50"
+                        }, '+ Create Custom Furniture'),
+                        
+                        React.createElement('div', { className: "grid grid-cols-2 gap-3" },
+                            furnitureCatalog.map((furniture, idx) =>
+                                React.createElement('button', {
+                                    key: idx,
+                                    onClick: () => addFurniture(furniture),
+                                    className: "p-4 border-2 rounded-lg text-left hover:border-blue-500",
+                                    style: { backgroundColor: furniture.color }
+                                },
+                                    React.createElement('div', { className: "font-semibold" }, furniture.name),
+                                    React.createElement('div', { className: "text-sm text-gray-600" }, `${furniture.w}×${furniture.d}cm`)
+                                )
+                            )
+                        )
+                    )
+                ),
+
+                // Custom furniture form
+                showCustomForm && React.createElement('div', {
+                    className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50",
+                    onClick: () => setShowCustomForm(false)
+                },
+                    React.createElement('div', {
+                        className: "bg-white w-full max-w-md rounded-2xl p-6",
+                        onClick: (e) => e.stopPropagation()
+                    },
+                        React.createElement('h2', { className: "text-xl font-bold mb-4" }, 'Create Custom Furniture'),
+                        
+                        React.createElement('div', { className: "space-y-4" },
+                            React.createElement('div', null,
+                                React.createElement('label', { className: "block text-sm font-medium mb-1" }, 'Name'),
+                                React.createElement('input', {
+                                    type: "text",
+                                    value: customFurniture.name,
+                                    onChange: (e) => setCustomFurniture({...customFurniture, name: e.target.value}),
+                                    placeholder: "e.g., My Sofa",
+                                    className: "w-full px-3 py-2 border rounded-lg"
+                                })
+                            ),
+                            
+                            React.createElement('div', { className: "grid grid-cols-2 gap-3" },
+                                React.createElement('div', null,
+                                    React.createElement('label', { className: "block text-sm font-medium mb-1" }, 'Width (cm)'),
+                                    React.createElement('input', {
+                                        type: "number",
+                                        value: customFurniture.w,
+                                        onChange: (e) => setCustomFurniture({...customFurniture, w: e.target.value}),
+                                        placeholder: "120",
+                                        className: "w-full px-3 py-2 border rounded-lg"
+                                    })
+                                ),
+                                
+                                React.createElement('div', null,
+                                    React.createElement('label', { className: "block text-sm font-medium mb-1" }, 'Depth (cm)'),
+                                    React.createElement('input', {
+                                        type: "number",
+                                        value: customFurniture.d,
+                                        onChange: (e) => setCustomFurniture({...customFurniture, d: e.target.value}),
+                                        placeholder: "60",
+                                        className: "w-full px-3 py-2 border rounded-lg"
+                                    })
+                                )
+                            ),
+                            
+                            React.createElement('div', null,
+                                React.createElement('label', { className: "block text-sm font-medium mb-1" }, 'Color'),
+                                React.createElement('div', { className: "flex gap-2" },
+                                    ['#FFE4E1', '#E6F3FF', '#E8F5E9', '#FFF9C4', '#FFE0B2', '#F3E5F5', '#E0E0E0', '#D7CCC8'].map(color =>
+                                        React.createElement('button', {
+                                            key: color,
+                                            onClick: () => setCustomFurniture({...customFurniture, color}),
+                                            className: "w-10 h-10 rounded-lg border-2",
+                                            style: {
+                                                backgroundColor: color,
+                                                borderColor: customFurniture.color === color ? '#2563eb' : '#ccc'
+                                            }
+                                        })
+                                    )
+                                )
+                            ),
+                            
+                            React.createElement('div', { className: "flex gap-2 mt-6" },
+                                React.createElement('button', {
+                                    onClick: () => setShowCustomForm(false),
+                                    className: "flex-1 px-4 py-2 border rounded-lg"
+                                }, 'Cancel'),
+                                React.createElement('button', {
+                                    onClick: addCustomFurniture,
+                                    className: "flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg"
+                                }, 'Add')
+                            )
+                        )
+                    )
+                ),
+
+                // Room settings modal
+                showRoomSettings && React.createElement('div', {
+                    className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50",
+                    onClick: () => setShowRoomSettings(false)
+                },
+                    React.createElement('div', {
+                        className: "bg-white w-full max-w-md rounded-2xl p-6",
+                        onClick: (e) => e.stopPropagation()
+                    },
+                        React.createElement('h2', { className: "text-xl font-bold mb-4" }, 'Room Settings'),
+                        
+                        React.createElement('div', { className: "space-y-4" },
+                            React.createElement('div', null,
+                                React.createElement('label', { className: "block text-sm font-medium mb-1" }, 'Room Width (cm)'),
+                                React.createElement('input', {
+                                    type: "number",
+                                    value: roomWidth,
+                                    onChange: (e) => setRoomWidth(parseInt(e.target.value) || 575),
+                                    className: "w-full px-3 py-2 border rounded-lg"
+                                })
+                            ),
+                            
+                            React.createElement('div', null,
+                                React.createElement('label', { className: "block text-sm font-medium mb-1" }, 'Room Height (cm)'),
+                                React.createElement('input', {
+                                    type: "number",
+                                    value: roomHeight,
+                                    onChange: (e) => setRoomHeight(parseInt(e.target.value) || 585),
+                                    className: "w-full px-3 py-2 border rounded-lg"
+                                })
+                            ),
+                            
+                            React.createElement('div', { className: "bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-gray-700" },
+                                'Note: Changing room size will not move existing furniture or fixed elements. You may need to adjust them manually.'
+                            ),
+                            
+                            React.createElement('div', { className: "flex gap-2 mt-6" },
+                                React.createElement('button', {
+                                    onClick: () => setShowRoomSettings(false),
+                                    className: "flex-1 px-4 py-2 border rounded-lg"
+                                }, 'Cancel'),
+                                React.createElement('button', {
+                                    onClick: updateRoomSize,
+                                    className: "flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg"
+                                }, 'Apply')
+                            )
+                        )
+                    )
+                )
+            );
+        };
+
+        ReactDOM.render(React.createElement(RoomPlanner), document.getElementById('root'));
+    </script>
+</body>
+</html>
