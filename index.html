@@ -388,14 +388,14 @@
             <select id="layoutSelect" class="header-select" onchange="onLayoutChange(this.value)"></select>
             <button class="btn btn-success" onclick="createLayout()">+ Layout</button>
             <button class="btn btn-danger" onclick="deleteCurrentLayout()">- Layout</button>
-            <button class="btn btn-secondary" onclick="showRoomSettings()">Settings</button>
-            <!-- <button class="btn btn-primary" onclick="saveLayout()">Save JSON</button> -->
-            <button class="btn btn-primary" onclick="saveCurrentLayout(true)">Save</button>
-            <button class="btn btn-primary" onclick="shareCurrentRoom()">Share Room</button>
-            <button class="btn btn-primary" onclick="shareCurrentLayout()">Share Layout</button>
-            <button class="btn btn-primary" onclick="savePNG()">Save PNG</button>
+            <button class="btn btn-secondary" onclick="showRoomSettings()">Settings⚙️</button>
+            <button class="btn btn-primary" onclick="saveLayout()">Save JSON📄</button>
+            <button class="btn btn-primary" onclick="saveCurrentLayout(true)">Save📁</button>
+            <button class="btn btn-primary" onclick="shareCurrentRoom()">Share Room🔄</button>
+            <!-- <button class="btn btn-primary" onclick="shareCurrentLayout()">Share Layout🔄</button> -->
+            <button class="btn btn-primary" onclick="savePNG()">Save PNG📷</button>
             <button class="btn btn-danger" onclick="resetCurrentLayout()">Reset</button>
-            <!-- <button class="btn btn-success" onclick="document.getElementById('fileInput').click()">Open</button> -->
+            <button class="btn btn-success" onclick="document.getElementById('fileInput').click()">Open JSON📄</button>
             <input type="file" id="fileInput" accept=".json" onchange="loadLayout(event)" class="hidden">
         </div>
     </div>
