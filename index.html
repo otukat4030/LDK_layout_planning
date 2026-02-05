@@ -430,6 +430,32 @@
 
         const colors = ['#FFE4E1', '#E6F3FF', '#E8F5E9', '#FFF9C4', '#FFE0B2', '#F3E5F5', '#E0E0E0', '#D7CCC8'];
 
+        function autoSave() {
+            const data = {
+                roomWidth,
+                roomHeight,
+                items,
+                fixed,
+                userFurniture
+            };
+            localStorage.setItem('roomPlannerData', JSON.stringify(data));
+        }
+
+        function loadAutoSave() {
+            const saved = localStorage.getItem('roomPlannerData');
+            if (!saved) return;
+
+            const data = JSON.parse(saved);
+
+            roomWidth = data.roomWidth || roomWidth;
+            roomHeight = data.roomHeight || roomHeight;
+            items = data.items || [];
+            fixed = data.fixed || [];
+            userFurniture = data.userFurniture || [];
+
+            populateFurnitureGrid();
+        }
+
         // Initialize
         function init() {
             console.log('Initializing...');
@@ -437,6 +463,7 @@
             populateFurnitureGrid();
             populateColorPicker();
             draw();
+            loadAutoSave();
 
             canvas.addEventListener('mousedown', onMouseDown);
             canvas.addEventListener('mousemove', onMouseMove);
