@@ -260,6 +260,7 @@
         <div>
             <button class="btn btn-secondary" onclick="showRoomSettings()">⚙️</button>
             <button class="btn btn-primary" onclick="saveLayout()">💾 JSON</button>
+            <button class="btn btn-primary" onclick="saveToLocalStorage(true)">💾 Local</button>
             <button class="btn btn-primary" onclick="savePNG()">💾 PNG</button>
             <button class="btn btn-success" onclick="document.getElementById('fileInput').click()">📂</button>
             <input type="file" id="fileInput" accept=".json" onchange="loadLayout(event)" class="hidden">
@@ -430,22 +431,39 @@
 
         const colors = ['#FFE4E1', '#E6F3FF', '#E8F5E9', '#FFF9C4', '#FFE0B2', '#F3E5F5', '#E0E0E0', '#D7CCC8'];
 
-        function autoSave() {
-            const data = {
+        function getLayoutData() {
+            return {
                 roomWidth,
                 roomHeight,
                 items,
                 fixed,
                 userFurniture
             };
-            localStorage.setItem('roomPlannerData', JSON.stringify(data));
+        }
+
+        function saveToLocalStorage(showMessage = false) {
+            localStorage.setItem('roomPlannerData', JSON.stringify(getLayoutData()));
+            if (showMessage) {
+                alert('Layout saved to localStorage.');
+            }
+        }
+
+        function autoSave() {
+            saveToLocalStorage(false);
         }
 
         function loadAutoSave() {
             const saved = localStorage.getItem('roomPlannerData');
             if (!saved) return;
 
-            const data = JSON.parse(saved);
+            let data;
+            try {
+                data = JSON.parse(saved);
+            } catch (err) {
+                console.warn('Failed to parse localStorage data:', err);
+                localStorage.removeItem('roomPlannerData');
+                return;
+            }
 
             roomWidth = data.roomWidth || roomWidth;
             roomHeight = data.roomHeight || roomHeight;
@@ -453,6 +471,7 @@
             fixed = data.fixed || [];
             userFurniture = data.userFurniture || [];
 
+            document.getElementById('roomInfo').textContent = `Room Size: ${roomWidth}cm ﾃ・${roomHeight}cm`;
             populateFurnitureGrid();
         }
 
@@ -460,10 +479,10 @@
         function init() {
             console.log('Initializing...');
             setCanvasSize();
+            loadAutoSave();
             populateFurnitureGrid();
             populateColorPicker();
             draw();
-            loadAutoSave();
 
             canvas.addEventListener('mousedown', onMouseDown);
             canvas.addEventListener('mousemove', onMouseMove);
@@ -665,6 +684,7 @@
 
         function onMouseUp() {
             draggedItem = null;
+            autoSave();
         }
 
         function onTouchStart(e) {
@@ -693,6 +713,7 @@
 
         function onTouchEnd() {
             draggedItem = null;
+            autoSave();
         }
 
         function addFurniture(f) {
@@ -706,6 +727,7 @@
                 color: f.color
             });
             hideFurnitureMenu();
+            autoSave();
             draw();
         }
 
@@ -746,6 +768,7 @@
             hideCustomForm();
             hideFurnitureMenu();
             populateFurnitureGrid(); // Refresh grid
+            autoSave();
             draw();
         }
 
@@ -753,6 +776,7 @@
             const item = items.find(i => i.id === selectedId);
             if (item) {
                 [item.w, item.d] = [item.d, item.w];
+                autoSave();
                 draw();
             }
         }
@@ -761,6 +785,7 @@
             items = items.filter(i => i.id !== selectedId);
             selectedId = null;
             document.getElementById('controls').style.display = 'none';
+            autoSave();
             draw();
         }
 
@@ -813,6 +838,7 @@
             if (confirm('Delete this furniture from your saved list?')) {
                 userFurniture.splice(index, 1);
                 populateFurnitureGrid();
+                autoSave();
                 showManageFurniture(); // Refresh the list
             }
         }
@@ -840,6 +866,7 @@
             if (confirm('Delete this fixed element?')) {
                 fixed.splice(index, 1);
                 populateFixedElementsList();
+                autoSave();
                 draw();
             }
         }
@@ -889,6 +916,7 @@
             fixed.push({ name, x, y, w, d, color: selectedFixedColor });
             hideAddFixedModal();
             populateFixedElementsList();
+            autoSave();
             draw();
         }
 
@@ -908,6 +936,7 @@
             roomHeight = parseInt(document.getElementById('roomHeight').value) || 585;
             document.getElementById('roomInfo').textContent = `Room Size: ${roomWidth}cm × ${roomHeight}cm`;
             hideRoomSettings();
+            autoSave();
             draw();
         }
 
@@ -1025,7 +1054,7 @@
         }
 
         function saveLayout() {
-            const data = JSON.stringify({ roomWidth, roomHeight, items, fixed, userFurniture }, null, 2);
+            const data = JSON.stringify(getLayoutData(), null, 2);
             const blob = new Blob([data], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -1049,6 +1078,7 @@
                     if (data.userFurniture) userFurniture = data.userFurniture;
                     document.getElementById('roomInfo').textContent = `Room Size: ${roomWidth}cm × ${roomHeight}cm`;
                     populateFurnitureGrid();
+                    autoSave();
                     draw();
                 } catch (err) {
                     alert('Failed to load layout: ' + err.message);
