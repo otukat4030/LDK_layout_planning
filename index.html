@@ -656,6 +656,51 @@
             return new TextDecoder().decode(bytes);
         }
 
+        function bytesToBase64Url(bytes) {
+            let binary = '';
+            bytes.forEach(b => { binary += String.fromCharCode(b); });
+            return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        }
+
+        function base64UrlToBytes(base64Url) {
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+            const binary = atob(padded);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return bytes;
+        }
+
+        async function gzipCompressText(text) {
+            if (typeof CompressionStream === 'undefined') return null;
+            try {
+                const cs = new CompressionStream('gzip');
+                const writer = cs.writable.getWriter();
+                writer.write(new TextEncoder().encode(text));
+                writer.close();
+                const compressedBuffer = await new Response(cs.readable).arrayBuffer();
+                return new Uint8Array(compressedBuffer);
+            } catch (err) {
+                return null;
+            }
+        }
+
+        async function gzipDecompressToText(bytes) {
+            if (typeof DecompressionStream === 'undefined') return null;
+            try {
+                const ds = new DecompressionStream('gzip');
+                const writer = ds.writable.getWriter();
+                writer.write(bytes);
+                writer.close();
+                const decompressedBuffer = await new Response(ds.readable).arrayBuffer();
+                return new TextDecoder().decode(new Uint8Array(decompressedBuffer));
+            } catch (err) {
+                return null;
+            }
+        }
+
         function generateId(prefix) {
             return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         }
@@ -711,16 +756,33 @@
             return room.layouts.find(l => l.id === appState.activeLayoutId) || null;
         }
 
-        function serializeSharePayload(payload) {
-            return toBase64Url(JSON.stringify(payload));
+        async function serializeSharePayload(payload) {
+            const json = JSON.stringify(payload);
+            const compressed = await gzipCompressText(json);
+            if (compressed) {
+                return `gz.${bytesToBase64Url(compressed)}`;
+            }
+            return `raw.${toBase64Url(json)}`;
         }
 
-        function deserializeSharePayload(encoded) {
+        async function deserializeSharePayload(encoded) {
+            if (encoded.startsWith('gz.')) {
+                const bytes = base64UrlToBytes(encoded.slice(3));
+                const text = await gzipDecompressToText(bytes);
+                if (!text) {
+                    throw new Error('Cannot decompress shared payload');
+                }
+                return JSON.parse(text);
+            }
+            if (encoded.startsWith('raw.')) {
+                return JSON.parse(fromBase64Url(encoded.slice(4)));
+            }
+            // Backward compatibility for old links (no prefix)
             return JSON.parse(fromBase64Url(encoded));
         }
 
-        function buildShareUrl(payload) {
-            const encoded = serializeSharePayload(payload);
+        async function buildShareUrl(payload) {
+            const encoded = await serializeSharePayload(payload);
             return `${window.location.origin}${window.location.pathname}${SHARE_HASH_PREFIX}${encoded}`;
         }
 
@@ -1123,7 +1185,7 @@
                 layoutName: layout.name,
                 data: getWorkspaceData()
             };
-            const url = buildShareUrl(payload);
+            const url = await buildShareUrl(payload);
             try {
                 await copyOrShareLink(`Layout: ${layout.name}`, url);
                 alert('Share link is ready.');
@@ -1155,7 +1217,7 @@
                     }))
                 }
             };
-            const url = buildShareUrl(payload);
+            const url = await buildShareUrl(payload);
             try {
                 await copyOrShareLink(`Room: ${room.name}`, url);
                 alert('Share link is ready.');
@@ -1231,13 +1293,13 @@
             return true;
         }
 
-        function handleShareLinkImport() {
+        async function handleShareLinkImport() {
             if (!window.location.hash.startsWith(SHARE_HASH_PREFIX)) return;
             const encoded = window.location.hash.slice(SHARE_HASH_PREFIX.length);
             if (!encoded) return;
             let payload;
             try {
-                payload = deserializeSharePayload(encoded);
+                payload = await deserializeSharePayload(encoded);
             } catch (err) {
                 alert('Failed to read shared link.');
                 return;
@@ -1264,7 +1326,7 @@
             loadAppState();
             refreshRoomLayoutSelectors();
             loadActiveLayoutToWorkspace();
-            handleShareLinkImport();
+            handleShareLinkImport().catch(err => console.warn('Share import failed:', err));
             populateFurnitureGrid();
             populateColorPicker();
             draw();
